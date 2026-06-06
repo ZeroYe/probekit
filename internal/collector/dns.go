@@ -15,21 +15,23 @@ import (
 )
 
 type DNSCollector struct {
-	cfg     config.DNSConfig
-	runners []*dnsRunner
-	logger  *zap.Logger
+	cfg      config.DNSConfig
+	runners  []*dnsRunner
+	logger   *zap.Logger
+	pipeline *output.Pipeline
 }
 
-func NewDNSCollector(cfg config.DNSConfig, logger *zap.Logger) *DNSCollector {
+func NewDNSCollector(cfg config.DNSConfig, logger *zap.Logger, pipeline *output.Pipeline) *DNSCollector {
 	return &DNSCollector{
-		cfg:    cfg,
-		logger: logger.Named("dns"),
+		cfg:      cfg,
+		logger:   logger.Named("dns"),
+		pipeline: pipeline,
 	}
 }
 
 func (c *DNSCollector) Name() string { return "dns" }
 
-func (c *DNSCollector) Start(ctx context.Context, pipeline *output.Pipeline) error {
+func (c *DNSCollector) Start(ctx context.Context) error {
 	if len(c.cfg.Targets) == 0 {
 		c.logger.Info("no targets, skipping")
 		return nil
@@ -38,7 +40,7 @@ func (c *DNSCollector) Start(ctx context.Context, pipeline *output.Pipeline) err
 	for _, t := range c.cfg.Targets {
 		runner := newDNSRunner(t, c.logger)
 		c.runners = append(c.runners, runner)
-		go runner.run(ctx, pipeline)
+		go runner.run(ctx, c.pipeline)
 	}
 
 	c.logger.Info("started", zap.Int("targets", len(c.runners)))
@@ -66,7 +68,7 @@ func newDNSRunner(target config.DNSTarget, logger *zap.Logger) *dnsRunner {
 	resolver := &net.Resolver{
 		PreferGo: true,
 		Dial: func(ctx context.Context, network, _ string) (net.Conn, error) {
-			d := net.Dialer{Timeout: 5 * time.Second}
+			d := net.Dialer{Timeout: target.Timeout}
 			return d.DialContext(ctx, network, addr)
 		},
 	}

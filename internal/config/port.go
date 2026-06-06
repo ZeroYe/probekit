@@ -3,7 +3,10 @@ package config
 import "time"
 
 type PortConfig struct {
-	Targets []PortTarget `yaml:"targets"`
+	FlushInterval time.Duration `yaml:"flush_interval"`
+	BatchSize     int           `yaml:"batch_size"`
+	BufferSize    int           `yaml:"buffer_size"`
+	Targets       []PortTarget  `yaml:"targets"`
 }
 
 func (c PortConfig) Validate() error {
@@ -11,6 +14,19 @@ func (c PortConfig) Validate() error {
 		c.Targets[i].Validate()
 	}
 	return nil
+}
+
+func (c PortConfig) EffectiveVM(global VMConfig) VMConfig {
+	if c.FlushInterval > 0 {
+		global.FlushInterval = c.FlushInterval
+	}
+	if c.BatchSize > 0 {
+		global.BatchSize = c.BatchSize
+	}
+	if c.BufferSize > 0 {
+		global.BufferSize = c.BufferSize
+	}
+	return global
 }
 
 type PortTarget struct {

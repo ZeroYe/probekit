@@ -6,7 +6,10 @@ import (
 )
 
 type HTTPConfig struct {
-	Targets []HTTPTarget `yaml:"targets"`
+	FlushInterval time.Duration `yaml:"flush_interval"`
+	BatchSize     int           `yaml:"batch_size"`
+	BufferSize    int           `yaml:"buffer_size"`
+	Targets       []HTTPTarget  `yaml:"targets"`
 }
 
 func (c HTTPConfig) Validate() error {
@@ -14,6 +17,19 @@ func (c HTTPConfig) Validate() error {
 		c.Targets[i].Validate()
 	}
 	return nil
+}
+
+func (c HTTPConfig) EffectiveVM(global VMConfig) VMConfig {
+	if c.FlushInterval > 0 {
+		global.FlushInterval = c.FlushInterval
+	}
+	if c.BatchSize > 0 {
+		global.BatchSize = c.BatchSize
+	}
+	if c.BufferSize > 0 {
+		global.BufferSize = c.BufferSize
+	}
+	return global
 }
 
 type HTTPTarget struct {

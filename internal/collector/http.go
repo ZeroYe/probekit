@@ -15,21 +15,23 @@ import (
 )
 
 type HTTPCollector struct {
-	cfg     config.HTTPConfig
-	runners []*httpRunner
-	logger  *zap.Logger
+	cfg      config.HTTPConfig
+	runners  []*httpRunner
+	logger   *zap.Logger
+	pipeline *output.Pipeline
 }
 
-func NewHTTPCollector(cfg config.HTTPConfig, logger *zap.Logger) *HTTPCollector {
+func NewHTTPCollector(cfg config.HTTPConfig, logger *zap.Logger, pipeline *output.Pipeline) *HTTPCollector {
 	return &HTTPCollector{
-		cfg:    cfg,
-		logger: logger.Named("http"),
+		cfg:      cfg,
+		logger:   logger.Named("http"),
+		pipeline: pipeline,
 	}
 }
 
 func (c *HTTPCollector) Name() string { return "http" }
 
-func (c *HTTPCollector) Start(ctx context.Context, pipeline *output.Pipeline) error {
+func (c *HTTPCollector) Start(ctx context.Context) error {
 	if len(c.cfg.Targets) == 0 {
 		c.logger.Info("no targets, skipping")
 		return nil
@@ -38,7 +40,7 @@ func (c *HTTPCollector) Start(ctx context.Context, pipeline *output.Pipeline) er
 	for _, t := range c.cfg.Targets {
 		runner := newHTTPRunner(t, c.logger)
 		c.runners = append(c.runners, runner)
-		go runner.run(ctx, pipeline)
+		go runner.run(ctx, c.pipeline)
 	}
 
 	c.logger.Info("started", zap.Int("targets", len(c.runners)))

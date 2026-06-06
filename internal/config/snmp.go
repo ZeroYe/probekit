@@ -3,8 +3,11 @@ package config
 import "time"
 
 type SNMPConfig struct {
-	Defaults SNMPDefaults `yaml:"defaults"`
-	Targets  []SNMPTarget `yaml:"targets"`
+	FlushInterval time.Duration `yaml:"flush_interval"`
+	BatchSize     int           `yaml:"batch_size"`
+	BufferSize    int           `yaml:"buffer_size"`
+	Defaults      SNMPDefaults  `yaml:"defaults"`
+	Targets       []SNMPTarget  `yaml:"targets"`
 }
 
 func (c SNMPConfig) Validate() error {
@@ -13,6 +16,19 @@ func (c SNMPConfig) Validate() error {
 		c.Targets[i].Validate()
 	}
 	return nil
+}
+
+func (c SNMPConfig) EffectiveVM(global VMConfig) VMConfig {
+	if c.FlushInterval > 0 {
+		global.FlushInterval = c.FlushInterval
+	}
+	if c.BatchSize > 0 {
+		global.BatchSize = c.BatchSize
+	}
+	if c.BufferSize > 0 {
+		global.BufferSize = c.BufferSize
+	}
+	return global
 }
 
 type SNMPDefaults struct {

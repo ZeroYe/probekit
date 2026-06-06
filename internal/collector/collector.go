@@ -2,13 +2,11 @@ package collector
 
 import (
 	"context"
-
-	"github.com/ZeroYe/probekit/internal/output"
 )
 
 type Collector interface {
 	Name() string
-	Start(ctx context.Context, pipeline *output.Pipeline) error
+	Start(ctx context.Context) error
 	Stop() error
 }
 
@@ -24,9 +22,9 @@ func (m *Manager) Add(c Collector) {
 	m.collectors = append(m.collectors, c)
 }
 
-func (m *Manager) Start(ctx context.Context, pipeline *output.Pipeline) error {
+func (m *Manager) Start(ctx context.Context) error {
 	for _, c := range m.collectors {
-		if err := c.Start(ctx, pipeline); err != nil {
+		if err := c.Start(ctx); err != nil {
 			return err
 		}
 	}

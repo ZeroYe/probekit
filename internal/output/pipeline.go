@@ -45,6 +45,10 @@ func (p *Pipeline) Stop() error {
 	return p.pusher.Stop()
 }
 
+func (p *Pipeline) Registry() *metrics.Registry {
+	return p.registry
+}
+
 func (p *Pipeline) Submit(key string, ms []metrics.Metric) {
 	if p.registry != nil {
 		p.registry.Store(key, ms)

@@ -2,8 +2,6 @@ package collector
 
 import (
 	"context"
-	"fmt"
-	"math"
 	"strconv"
 	"strings"
 	"sync"
@@ -17,30 +15,33 @@ import (
 )
 
 type SNMPCollector struct {
-	cfg     config.SNMPConfig
-	runners []*snmpRunner
-	logger  *zap.Logger
+	cfg      config.SNMPConfig
+	runners  []*snmpRunner
+	logger   *zap.Logger
+	pipeline *output.Pipeline
 }
 
-func NewSNMPCollector(cfg config.SNMPConfig, logger *zap.Logger) *SNMPCollector {
+func NewSNMPCollector(cfg config.SNMPConfig, logger *zap.Logger, pipeline *output.Pipeline) *SNMPCollector {
 	return &SNMPCollector{
-		cfg:    cfg,
-		logger: logger.Named("snmp"),
+		cfg:      cfg,
+		logger:   logger.Named("snmp"),
+		pipeline: pipeline,
 	}
 }
 
 func (c *SNMPCollector) Name() string { return "snmp" }
 
-func (c *SNMPCollector) Start(ctx context.Context, pipeline *output.Pipeline) error {
+func (c *SNMPCollector) Start(ctx context.Context) error {
 	if len(c.cfg.Targets) == 0 {
 		c.logger.Info("no targets, skipping")
 		return nil
 	}
 
 	for _, t := range c.cfg.Targets {
-		runner := newSNMPRunner(t, c.cfg.Defaults, c.logger)
+		target := t
+		runner := newSNMPRunner(target, c.cfg.Defaults, c.logger)
 		c.runners = append(c.runners, runner)
-		go runner.run(ctx, pipeline)
+		go runner.run(ctx, c.pipeline)
 	}
 
 	c.logger.Info("started", zap.Int("targets", len(c.runners)))
@@ -102,172 +103,99 @@ func (r *snmpRunner) run(ctx context.Context, pipeline *output.Pipeline) {
 }
 
 func (r *snmpRunner) probe(pipeline *output.Pipeline) {
-	timeout := r.defaults.Timeout
-	if r.target.Timeout > 0 {
-		timeout = r.target.Timeout
+	timeout := r.target.Timeout
+	if timeout <= 0 {
+		timeout = r.defaults.Timeout
 	}
 
-	g := &gosnmp.GoSNMP{
+	port := r.defaults.Port
+
+	gs := &gosnmp.GoSNMP{
 		Target:    r.target.Host,
-		Port:      r.defaults.Port,
-		Community: r.defaults.Community,
+		Port:      port,
 		Version:   snmpVersion(r.defaults.Version),
+		Community: r.defaults.Community,
 		Timeout:   timeout,
 		Retries:   r.defaults.Retries,
 	}
 
-	err := g.Connect()
+	err := gs.Connect()
 	if err != nil {
-		r.logger.Warn("connect failed", zap.Error(err))
-		r.submitError(pipeline, err)
+		r.logger.Warn("snmp connect failed", zap.Error(err))
+		r.reportUp(0, pipeline)
 		return
 	}
-	defer g.Conn.Close()
+	defer gs.Conn.Close()
 
-	labels := targetLabels(r.target.Host, r.target.Labels, nil)
 	now := time.Now().Unix()
+	labels := targetLabels(r.target.Host, r.target.Labels, nil)
+
 	var ms []metrics.Metric
+
+	// Scalar OIDs
+	for _, oid := range r.target.OIDs.Scalar {
+		result, err := gs.Get([]string{oid})
+		if err != nil {
+			r.logger.Warn("snmp get failed", zap.String("oid", oid), zap.Error(err))
+			continue
+		}
+		for _, v := range result.Variables {
+			ms = append(ms, metrics.Metric{
+				Name:  oidToName(v.Name),
+				Value: snmpValue(v),
+				Labels: targetLabels(r.target.Host, r.target.Labels, map[string]string{
+					"oid": v.Name,
+				}),
+				Timestamp: time.Unix(now, 0),
+				Type:      metrics.TypeGauge,
+			})
+		}
+	}
+
+	// Table OIDs
+	for _, table := range r.target.OIDs.Tables {
+		results, err := gs.BulkWalkAll(table.OID)
+		if err != nil {
+			r.logger.Warn("snmp walk failed", zap.String("oid", table.OID), zap.Error(err))
+			continue
+		}
+
+		rows := groupTableRows(results, table.Index)
+		for _, row := range rows {
+			for _, m := range table.Metrics {
+				if v, ok := row.pdus[m.OID]; ok {
+					rowLabels := targetLabels(r.target.Host, r.target.Labels, row.labels)
+					ms = append(ms, metrics.Metric{
+						Name:      m.Name,
+						Value:     snmpValue(v),
+						Labels:    rowLabels,
+						Timestamp: time.Unix(now, 0),
+						Type:      metrics.TypeGauge,
+					})
+				}
+			}
+		}
+	}
 
 	ms = append(ms, metrics.Metric{
 		Name: "snmp_up", Value: 1, Labels: copyLabels(labels),
 		Timestamp: time.Unix(now, 0), Type: metrics.TypeGauge,
 	})
 
-	for _, oid := range r.target.OIDs.Scalar {
-		scalarMS := r.getScalar(g, oid, labels, now)
-		ms = append(ms, scalarMS...)
-	}
-
-	for _, table := range r.target.OIDs.Tables {
-		tableMS := r.walkTable(g, table, labels, now)
-		ms = append(ms, tableMS...)
-	}
-
 	pipeline.Submit("snmp/"+r.target.Host, ms)
 }
 
-func (r *snmpRunner) submitError(pipeline *output.Pipeline, err error) {
-	labels := targetLabels(r.target.Host, r.target.Labels, nil)
+func (r *snmpRunner) reportUp(up float64, pipeline *output.Pipeline) {
 	now := time.Now().Unix()
+	labels := targetLabels(r.target.Host, r.target.Labels, nil)
 	ms := []metrics.Metric{
-		{
-			Name: "snmp_up", Value: 0, Labels: copyLabels(labels),
-			Timestamp: time.Unix(now, 0), Type: metrics.TypeGauge,
-		},
+		{Name: "snmp_up", Value: up, Labels: labels, Timestamp: time.Unix(now, 0), Type: metrics.TypeGauge},
 	}
 	pipeline.Submit("snmp/"+r.target.Host, ms)
-}
-
-func (r *snmpRunner) getScalar(g *gosnmp.GoSNMP, oid string, baseLabels map[string]string, ts int64) []metrics.Metric {
-	result, err := g.Get([]string{oid})
-	if err != nil {
-		r.logger.Warn("get failed", zap.String("oid", oid), zap.Error(err))
-		return nil
-	}
-
-	if len(result.Variables) == 0 {
-		return nil
-	}
-
-	v := result.Variables[0]
-	val := snmpValue(v)
-
-	labels := make(map[string]string, len(baseLabels)+1)
-	for k, v := range baseLabels {
-		labels[k] = v
-	}
-	labels["oid"] = oid
-
-	name := snmpMetricName(oid)
-
-	return []metrics.Metric{
-		{
-			Name: name, Value: val, Labels: labels,
-			Timestamp: time.Unix(ts, 0), Type: metricTypeForValue(val),
-		},
-	}
-}
-
-func (r *snmpRunner) walkTable(g *gosnmp.GoSNMP, table config.SNMPTable, baseLabels map[string]string, ts int64) []metrics.Metric {
-	tagMap, err := r.walkTag(g, table.Tag, table.OID)
-	if err != nil {
-		r.logger.Warn("walk tag failed", zap.String("table", table.OID), zap.Error(err))
-	}
-
-	var ms []metrics.Metric
-
-	for _, m := range table.Metrics {
-		metricOID := m.OID
-		metricMS := r.walkMetric(g, metricOID, m.Name, table.Index, tagMap, baseLabels, ts)
-		ms = append(ms, metricMS...)
-	}
-
-	return ms
-}
-
-func (r *snmpRunner) walkTag(g *gosnmp.GoSNMP, tagOID string, tableOID string) (map[string]string, error) {
-	if tagOID == "" {
-		return nil, nil
-	}
-
-	tagMap := make(map[string]string)
-
-	err := g.Walk(tagOID, func(pdu gosnmp.SnmpPDU) error {
-		idx := extractIndex(pdu.Name, tableOID, tagOID)
-		if idx == "" {
-			return nil
-		}
-		tagMap[idx] = pduValueToString(pdu.Value)
-		return nil
-	})
-
-	if err != nil {
-		return tagMap, err
-	}
-
-	return tagMap, nil
-}
-
-func (r *snmpRunner) walkMetric(g *gosnmp.GoSNMP, metricOID string, metricName string, indexOID string, tagMap map[string]string, baseLabels map[string]string, ts int64) []metrics.Metric {
-	var ms []metrics.Metric
-
-	err := g.Walk(metricOID, func(pdu gosnmp.SnmpPDU) error {
-		idx := extractIndex(pdu.Name, metricOID, indexOID)
-		if idx == "" {
-			return nil
-		}
-
-		labels := make(map[string]string, len(baseLabels)+3)
-		for k, v := range baseLabels {
-			labels[k] = v
-		}
-		labels[indexOID] = idx
-
-		if tagMap != nil {
-			if tag, ok := tagMap[idx]; ok {
-				labels["ifDescr"] = tag
-			}
-		}
-
-		val := snmpValue(pdu)
-
-		ms = append(ms, metrics.Metric{
-			Name: metricName, Value: val, Labels: labels,
-			Timestamp: time.Unix(ts, 0), Type: metricTypeForValue(val),
-		})
-
-		return nil
-	})
-
-	if err != nil {
-		r.logger.Warn("walk failed", zap.String("oid", metricOID), zap.Error(err))
-	}
-
-	return ms
 }
 
 func snmpVersion(v string) gosnmp.SnmpVersion {
-	switch v {
+	switch strings.ToLower(v) {
 	case "1":
 		return gosnmp.Version1
 	case "2c":
@@ -279,81 +207,88 @@ func snmpVersion(v string) gosnmp.SnmpVersion {
 	}
 }
 
-func snmpValue(pdu gosnmp.SnmpPDU) float64 {
-	switch v := pdu.Value.(type) {
+func oidToName(oid string) string {
+	return strings.ReplaceAll(oid, ".", "_")
+}
+
+func snmpValue(v gosnmp.SnmpPDU) float64 {
+	switch val := v.Value.(type) {
 	case int:
-		return float64(v)
+		return float64(val)
 	case int32:
-		return float64(v)
+		return float64(val)
 	case int64:
-		return float64(v)
+		return float64(val)
 	case uint:
-		return float64(v)
+		return float64(val)
 	case uint32:
-		return float64(v)
+		return float64(val)
 	case uint64:
-		return float64(v)
+		return float64(val)
 	case float32:
-		return float64(v)
+		return float64(val)
 	case float64:
-		return v
-	case string:
-		f, err := strconv.ParseFloat(v, 64)
-		if err == nil {
-			return f
-		}
-		return 0
-	case []byte:
-		f, err := strconv.ParseFloat(string(v), 64)
-		if err == nil {
-			return f
-		}
-		return 0
-	default:
-		return 0
-	}
-}
-
-func pduValueToString(v any) string {
-	switch val := v.(type) {
-	case string:
 		return val
+	case string:
+		f, _ := strconv.ParseFloat(val, 64)
+		return f
 	case []byte:
-		return string(val)
+		f, _ := strconv.ParseFloat(string(val), 64)
+		return f
 	default:
-		return fmt.Sprintf("%v", val)
+		return 0
 	}
 }
 
-func extractIndex(oid, baseOID, indexOID string) string {
-	cleanOID := strings.TrimPrefix(oid, ".")
-	cleanBase := strings.TrimPrefix(baseOID, ".")
+type tableRow struct {
+	labels map[string]string
+	pdus   map[string]gosnmp.SnmpPDU
+}
 
-	if !strings.HasPrefix(cleanOID, cleanBase+".") {
+func groupTableRows(pdus []gosnmp.SnmpPDU, indexOID string) []*tableRow {
+	rows := make(map[string]*tableRow)
+
+	for _, pdu := range pdus {
+		idx := extractIndex(pdu.Name, indexOID)
+		if idx == "" {
+			continue
+		}
+
+		row, ok := rows[idx]
+		if !ok {
+			row = &tableRow{
+				labels: map[string]string{},
+				pdus:   make(map[string]gosnmp.SnmpPDU),
+			}
+			rows[idx] = row
+		}
+
+		row.pdus[pdu.Name] = pdu
+	}
+
+	result := make([]*tableRow, 0, len(rows))
+	for _, row := range rows {
+		row.labels = extractLabels(row.pdus)
+		result = append(result, row)
+	}
+	return result
+}
+
+func extractIndex(oid, baseOID string) string {
+	if !strings.HasPrefix(oid, baseOID) {
 		return ""
 	}
-
-	suffix := strings.TrimPrefix(cleanOID, cleanBase+".")
-	if suffix == "" || suffix == cleanBase {
-		return ""
-	}
-
-	parts := strings.SplitN(suffix, ".", 2)
-	return parts[0]
+	idx := strings.TrimPrefix(oid, baseOID)
+	idx = strings.TrimPrefix(idx, ".")
+	return idx
 }
 
-func snmpMetricName(oid string) string {
-	parts := strings.Split(oid, ".")
-	if len(parts) > 0 {
-		last := parts[len(parts)-1]
-		return "snmp_oid_" + last
+func extractLabels(pdus map[string]gosnmp.SnmpPDU) map[string]string {
+	labels := make(map[string]string)
+	for oid, pdu := range pdus {
+		if str, ok := pdu.Value.(string); ok {
+			labels[oid] = str
+		}
 	}
-	return "snmp_unknown"
-}
-
-func metricTypeForValue(val float64) metrics.MetricType {
-	if val == float64(uint64(val)) && val > math.MaxInt32 {
-		return metrics.TypeCounter
-	}
-	return metrics.TypeGauge
+	return labels
 }

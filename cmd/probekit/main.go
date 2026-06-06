@@ -39,33 +39,25 @@ func main() {
 
 	registry := metrics.NewRegistry()
 
-	pipeline, err := output.NewPipelineFromConfig(output.PipelineConfig{
-		VMConfig: cfg.Global.VictoriaMetrics,
-		Registry: registry,
-		Logger:   logger.Log,
-	})
-	if err != nil {
-		logger.Log.Error("failed to create pipeline", zap.Error(err))
-		os.Exit(1)
-	}
+	modulePipelines := make(map[string]*output.Pipeline)
+	addPipeline("icmp", cfg.ICMP.EffectiveVM(cfg.Global.VictoriaMetrics), registry, modulePipelines)
+	addPipeline("dns", cfg.DNS.EffectiveVM(cfg.Global.VictoriaMetrics), registry, modulePipelines)
+	addPipeline("snmp", cfg.SNMP.EffectiveVM(cfg.Global.VictoriaMetrics), registry, modulePipelines)
+	addPipeline("port", cfg.Port.EffectiveVM(cfg.Global.VictoriaMetrics), registry, modulePipelines)
+	addPipeline("http", cfg.HTTP.EffectiveVM(cfg.Global.VictoriaMetrics), registry, modulePipelines)
+
+	colMgr := collector.NewManager()
+
+	colMgr.Add(collector.NewICMPCollector(cfg.ICMP, logger.Log, cfg.Global.Concurrency, modulePipelines["icmp"]))
+	colMgr.Add(collector.NewDNSCollector(cfg.DNS, logger.Log, modulePipelines["dns"]))
+	colMgr.Add(collector.NewSNMPCollector(cfg.SNMP, logger.Log, modulePipelines["snmp"]))
+	colMgr.Add(collector.NewPortCollector(cfg.Port, logger.Log, modulePipelines["port"]))
+	colMgr.Add(collector.NewHTTPCollector(cfg.HTTP, logger.Log, modulePipelines["http"]))
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := pipeline.Start(); err != nil {
-		logger.Log.Error("failed to start pipeline", zap.Error(err))
-		os.Exit(1)
-	}
-
-	colMgr := collector.NewManager()
-
-	colMgr.Add(collector.NewICMPCollector(cfg.ICMP, logger.Log, cfg.Global.Concurrency))
-	colMgr.Add(collector.NewDNSCollector(cfg.DNS, logger.Log))
-	colMgr.Add(collector.NewSNMPCollector(cfg.SNMP, logger.Log))
-	colMgr.Add(collector.NewPortCollector(cfg.Port, logger.Log))
-	colMgr.Add(collector.NewHTTPCollector(cfg.HTTP, logger.Log))
-
-	if err := colMgr.Start(ctx, pipeline); err != nil {
+	if err := colMgr.Start(ctx); err != nil {
 		logger.Log.Error("failed to start collectors", zap.Error(err))
 		os.Exit(1)
 	}
@@ -85,10 +77,7 @@ func main() {
 					logger.Log.Error("failed to reload config", zap.Error(err))
 					return err
 				}
-				if err := restartCollectors(colMgr, newCfg, pipeline); err != nil {
-					logger.Log.Error("failed to restart collectors", zap.Error(err))
-					return err
-				}
+				restartAll(modulePipelines, colMgr, newCfg)
 				*cfg = *newCfg
 				if mcpServer != nil {
 					mcpServer.UpdateAuth(cfg.Global.MCPServer)
@@ -142,10 +131,7 @@ func main() {
 					logger.Log.Error("failed to reload config", zap.Error(err))
 					continue
 				}
-				if err := restartCollectors(colMgr, newCfg, pipeline); err != nil {
-					logger.Log.Error("failed to restart collectors", zap.Error(err))
-					continue
-				}
+				restartAll(modulePipelines, colMgr, newCfg)
 				*cfg = *newCfg
 				if mcpServer != nil {
 					mcpServer.UpdateAuth(cfg.Global.MCPServer)
@@ -161,21 +147,55 @@ func main() {
 
 	<-stop
 	logger.Log.Info("shutting down...")
-	cancel()
 	colMgr.Stop()
-	pipeline.Stop()
+	for _, p := range modulePipelines {
+		p.Stop()
+	}
+}
+
+func addPipeline(name string, vmCfg config.VMConfig, registry *metrics.Registry, pipelines map[string]*output.Pipeline) {
+	p, err := output.NewPipelineFromConfig(output.PipelineConfig{
+		VMConfig: vmCfg,
+		Registry: registry,
+		Logger:   logger.Log,
+	})
+	if err != nil {
+		logger.Log.Fatal("failed to create pipeline", zap.String("module", name), zap.Error(err))
+	}
+	if err := p.Start(); err != nil {
+		logger.Log.Fatal("failed to start pipeline", zap.String("module", name), zap.Error(err))
+	}
+	pipelines[name] = p
+}
+
+func restartAll(pipelines map[string]*output.Pipeline, colMgr *collector.Manager, cfg *config.Config) {
+	colMgr.Reset()
+
+	for name, vmCfg := range map[string]config.VMConfig{
+		"icmp": cfg.ICMP.EffectiveVM(cfg.Global.VictoriaMetrics),
+		"dns":  cfg.DNS.EffectiveVM(cfg.Global.VictoriaMetrics),
+		"snmp": cfg.SNMP.EffectiveVM(cfg.Global.VictoriaMetrics),
+		"port": cfg.Port.EffectiveVM(cfg.Global.VictoriaMetrics),
+		"http": cfg.HTTP.EffectiveVM(cfg.Global.VictoriaMetrics),
+	} {
+		old := pipelines[name]
+		if old != nil {
+			old.Stop()
+		}
+		addPipeline(name, vmCfg, pipelines[name].Registry(), pipelines)
+	}
+
+	colMgr.Add(collector.NewICMPCollector(cfg.ICMP, logger.Log, cfg.Global.Concurrency, pipelines["icmp"]))
+	colMgr.Add(collector.NewDNSCollector(cfg.DNS, logger.Log, pipelines["dns"]))
+	colMgr.Add(collector.NewSNMPCollector(cfg.SNMP, logger.Log, pipelines["snmp"]))
+	colMgr.Add(collector.NewPortCollector(cfg.Port, logger.Log, pipelines["port"]))
+	colMgr.Add(collector.NewHTTPCollector(cfg.HTTP, logger.Log, pipelines["http"]))
+
+	if err := colMgr.Start(context.Background()); err != nil {
+		logger.Log.Error("failed to restart collectors", zap.Error(err))
+	}
 }
 
 type targetCounterFn func() map[string]int
 
 func (f targetCounterFn) Counts() map[string]int { return f() }
-
-func restartCollectors(colMgr *collector.Manager, cfg *config.Config, pipeline *output.Pipeline) error {
-	colMgr.Reset()
-	colMgr.Add(collector.NewICMPCollector(cfg.ICMP, logger.Log, cfg.Global.Concurrency))
-	colMgr.Add(collector.NewDNSCollector(cfg.DNS, logger.Log))
-	colMgr.Add(collector.NewSNMPCollector(cfg.SNMP, logger.Log))
-	colMgr.Add(collector.NewPortCollector(cfg.Port, logger.Log))
-	colMgr.Add(collector.NewHTTPCollector(cfg.HTTP, logger.Log))
-	return colMgr.Start(context.Background(), pipeline)
-}

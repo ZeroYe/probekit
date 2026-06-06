@@ -27,6 +27,9 @@ func Load(configDir string) (*Config, error) {
 	if err := loadYAML(filepath.Join(configDir, "icmp.yaml"), &cfg.ICMP); err != nil {
 		return nil, fmt.Errorf("icmp config: %w", err)
 	}
+	if err := cfg.ICMP.LoadTargetsFile(configDir); err != nil {
+		return nil, err
+	}
 
 	if err := loadYAML(filepath.Join(configDir, "snmp.yaml"), &cfg.SNMP); err != nil {
 		return nil, fmt.Errorf("snmp config: %w", err)

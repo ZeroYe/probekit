@@ -19,26 +19,28 @@ import (
 )
 
 type ICMPCollector struct {
-	cfg     config.ICMPConfig
-	runners []*icmpRunner
-	logger  *zap.Logger
-	sem     chan struct{}
+	cfg      config.ICMPConfig
+	runners  []*icmpRunner
+	logger   *zap.Logger
+	sem      chan struct{}
+	pipeline *output.Pipeline
 }
 
-func NewICMPCollector(cfg config.ICMPConfig, logger *zap.Logger, concurrency int) *ICMPCollector {
+func NewICMPCollector(cfg config.ICMPConfig, logger *zap.Logger, concurrency int, pipeline *output.Pipeline) *ICMPCollector {
 	if concurrency <= 0 {
 		concurrency = 20
 	}
 	return &ICMPCollector{
-		cfg:    cfg,
-		logger: logger.Named("icmp"),
-		sem:    make(chan struct{}, concurrency),
+		cfg:      cfg,
+		logger:   logger.Named("icmp"),
+		sem:      make(chan struct{}, concurrency),
+		pipeline: pipeline,
 	}
 }
 
 func (c *ICMPCollector) Name() string { return "icmp" }
 
-func (c *ICMPCollector) Start(ctx context.Context, pipeline *output.Pipeline) error {
+func (c *ICMPCollector) Start(ctx context.Context) error {
 	if len(c.cfg.Targets) == 0 {
 		c.logger.Info("no targets, skipping")
 		return nil
@@ -47,7 +49,7 @@ func (c *ICMPCollector) Start(ctx context.Context, pipeline *output.Pipeline) er
 	for _, t := range c.cfg.Targets {
 		runner := newICMPRunner(t, c.cfg.HistogramBucketsMs, c.sem, c.logger)
 		c.runners = append(c.runners, runner)
-		go runner.run(ctx, pipeline)
+		go runner.run(ctx, c.pipeline)
 	}
 
 	c.logger.Info("started", zap.Int("targets", len(c.runners)), zap.Int("concurrency", cap(c.sem)))
