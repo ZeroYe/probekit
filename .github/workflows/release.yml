@@ -1,0 +1,72 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+          check-latest: true
+
+      - name: Build all platforms
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          LDFLAGS="-X probe-agent/internal/selfmetrics.BuildVersion=${VERSION}"
+
+          mkdir -p dist
+
+          GOOS=linux   GOARCH=amd64 go build -ldflags "$LDFLAGS" -o "dist/probe-agent-linux-amd64-${GITHUB_REF_NAME}"  ./cmd/probe-agent/
+          GOOS=linux   GOARCH=arm64 go build -ldflags "$LDFLAGS" -o "dist/probe-agent-linux-arm64-${GITHUB_REF_NAME}"  ./cmd/probe-agent/
+          GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o "dist/probe-agent-windows-amd64-${GITHUB_REF_NAME}.exe" ./cmd/probe-agent/
+          GOOS=darwin  GOARCH=amd64 go build -ldflags "$LDFLAGS" -o "dist/probe-agent-darwin-amd64-${GITHUB_REF_NAME}"   ./cmd/probe-agent/
+          GOOS=darwin  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o "dist/probe-agent-darwin-arm64-${GITHUB_REF_NAME}"   ./cmd/probe-agent/
+
+      - name: Create archives
+        run: |
+          cd dist
+          for f in probe-agent-*; do
+            ext="${f##*.}"
+            if [ "$ext" = "exe" ]; then
+              zip "${f%.exe}.zip" "$f"
+            else
+              gzip -k "$f"
+            fi
+          done
+
+      - name: Generate checksums
+        run: |
+          cd dist
+          sha256sum probe-agent-* > checksums.txt
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "probe-agent ${{ github.ref_name }}"
+          body: |
+            ## probe-agent ${{ github.ref_name }}
+
+            ### Downloads
+
+            | File | Platform |
+            |------|----------|
+            | `probe-agent-linux-amd64-${{ github.ref_name }}` | Linux x86_64 |
+            | `probe-agent-linux-arm64-${{ github.ref_name }}` | Linux ARM64 |
+            | `probe-agent-windows-amd64-${{ github.ref_name }}.exe` | Windows x86_64 |
+            | `probe-agent-darwin-amd64-${{ github.ref_name }}` | macOS Intel |
+            | `probe-agent-darwin-arm64-${{ github.ref_name }}` | macOS Apple Silicon |
+
+            `checksums.txt` — SHA256 of all files above.
+          files: dist/*
