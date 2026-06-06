@@ -1,10 +1,30 @@
+# ============================================================
+# ICMP Ping 探测配置
+# ============================================================
+
+# RTT 直方图分桶 (毫秒)
+# 每个桶统计落在此范围内的包数 + 累计总和
+# 最终输出指标:
+#   icmp_rtt_ms_bucket{le="<bucket>"}  — 累计计数
+#   icmp_rtt_ms_sum                     — 总和
+#   icmp_rtt_ms_count                   — 总包数
 histogram_buckets_ms: [1, 5, 10, 20, 50, 100, 200, 500, 1000]
 
+# 探测目标列表
 targets:
+    # 目标主机 (IP 或域名)
   - host: "8.8.8.8"
+
+    # 探测间隔 (Go duration 格式)
     interval: 10s
+
+    # 每次探测发包数
     count: 5
+
+    # 单包超时
     timeout: 5s
+
+    # 附加标签，会附加到所有该目标的指标上
     labels:
       service: google-dns
       region: primary

@@ -1,24 +1,61 @@
+# ============================================================
+# 全局配置
+# ============================================================
+
+# 全局最大并发操作数
 concurrency: 20
+
+# 日志级别: debug / info / warn / error
 log_level: info
 
+# ============================================================
+# VictoriaMetrics 输出配置
+# ============================================================
 victoria_metrics:
+  # 推送地址 (Prometheus 文本格式导入接口)
+  # 为空则不启用推送
   push_url: "http://victoria:8428/api/v1/import/prometheus"
-  batch_size: 500
-  flush_interval: 10s
-  buffer_size: 10000
-  retry:
-    max_retries: 3
-    initial_backoff: 1s
-    max_backoff: 30s
 
+  # 每批最大指标数
+  batch_size: 500
+
+  # 推送间隔
+  flush_interval: 10s
+
+  # 环形缓冲区大小 (超过时丢弃最旧指标)
+  buffer_size: 10000
+
+  # 推送失败重试
+  retry:
+    max_retries: 3          # 最大重试次数
+    initial_backoff: 1s     # 首次重试等待
+    max_backoff: 30s        # 最大重试等待
+
+# ============================================================
+# MCP 服务配置 (AI 助手交互)
+# ============================================================
 mcp_server:
+  # 是否启用 MCP 服务
   enabled: true
+
+  # 监听地址
   listen: ":9801"
+
+  # 认证配置
   auth:
-    type: api_key
+    type: api_key           # 认证类型，目前仅支持 api_key
     keys:
-      - "sk-probe-change-me"
+      - "sk-probe-change-me"   # 使用前请修改此密钥
+
+# ============================================================
+# 自身指标配置 (Prometheus 抓取端点)
+# ============================================================
 self_metrics:
+  # 是否启用 /metrics 端点
   enabled: true
+
+  # 抓取路径
   path: /metrics
+
+  # 是否采集 Go 运行时指标 (goroutine 数、内存等)
   collect_runtime: true

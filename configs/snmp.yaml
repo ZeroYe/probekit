@@ -1,33 +1,57 @@
-defaults:
-  version: 2c
-  community: "public"
-  port: 161
-  timeout: 5s
-  retries: 1
+# ============================================================
+# SNMP 轮询探测配置
+# ============================================================
 
+# 全局默认值 (各目标可覆盖)
+defaults:
+  version: 2c              # SNMP 版本: 1 / 2c / 3
+  community: "public"      # 只读社区字符串 (v1/v2c)
+  port: 161                # 目标端口
+  timeout: 5s              # 单次超时
+  retries: 1               # 超时重试次数
+
+# 探测目标列表
 targets:
+    # 目标设备地址
   - host: "192.168.1.1"
+
+    # 轮询间隔
     interval: 60s
+
+    # 附加标签
     labels:
       device: core-router
       site: main
+
+    # OID 配置
     oids:
+      # 标量 OID 列表 (使用 Get 请求)
       scalar:
-        - "1.3.6.1.2.1.1.1.0"
-        - "1.3.6.1.2.1.1.3.0"
+        - "1.3.6.1.2.1.1.1.0"   # sysDescr — 输出 snmp_sys_descr
+        - "1.3.6.1.2.1.1.3.0"   # sysUpTime — 输出 snmp_sys_up_time
+
+      # 表 OID 列表 (使用 Walk/BulkWalk 请求)
       tables:
-        - oid: "1.3.6.1.2.1.2.2.1"
-          index: ifIndex
-          tag: ifDescr
+          # 表 OID
+        - oid: "1.3.6.1.2.1.2.2.1"   # ifEntry — 接口表
+
+          # 索引列 OID 取值用作指标标签
+          index: "1.3.6.1.2.1.2.2.1.1"  # ifIndex
+
+          # 标签列 OID 取值用作指标标签 (字符串类型)
+          tag: "1.3.6.1.2.1.2.2.1.2"    # ifDescr
+
+          # 指标列定义
           metrics:
-            - oid: "1.3.6.1.2.1.2.2.1.10"
-              name: if_in_octets
-              type: counter
-            - oid: "1.3.6.1.2.1.2.2.1.16"
+            - oid: "1.3.6.1.2.1.2.2.1.10"   # ifInOctets
+              name: if_in_octets              # 输出指标名
+              type: counter                   # counter / gauge
+            - oid: "1.3.6.1.2.1.2.2.1.16"   # ifOutOctets
               name: if_out_octets
               type: counter
 
   - host: "192.168.1.2"
+    # 按目标覆盖默认值
     timeout: 10s
     labels:
       device: access-switch

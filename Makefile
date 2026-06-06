@@ -51,4 +51,4 @@ clean:
 # ── Run ────────────────────────────────────────────────────────────────────────
 
 run: build
-	./$(BIN)$(exe) --config-dir ./config
+	./$(BIN)$(exe) --config-dir ./configs
