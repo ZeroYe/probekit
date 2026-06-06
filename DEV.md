@@ -80,8 +80,7 @@ GOOS=linux GOARCH=arm64 go build -o probe-agent-linux-arm64 ./cmd/probe-agent/
 | Linux amd64 | `make build-linux-amd64` |
 | Linux arm64 | `make build-linux-arm64` |
 | Windows amd64 | `make build-windows-amd64` |
-| macOS amd64 | `make build-darwin-amd64` |
-| macOS arm64 | `make build-darwin-arm64` |
+
 
 ## 测试
 

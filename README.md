@@ -30,7 +30,6 @@ go build -ldflags "-X probe-agent/internal/selfmetrics.BuildVersion=v1.0.0" -o p
 GOOS=linux GOARCH=amd64 go build -o probe-agent-linux-amd64 ./cmd/probe-agent/
 GOOS=linux GOARCH=arm64 go build -o probe-agent-linux-arm64 ./cmd/probe-agent/
 GOOS=windows GOARCH=amd64 go build -o probe-agent-windows-amd64.exe ./cmd/probe-agent/
-GOOS=darwin GOARCH=arm64 go build -o probe-agent-darwin-arm64 ./cmd/probe-agent/
 
 # 或使用 Makefile
 make build                        # 当前平台

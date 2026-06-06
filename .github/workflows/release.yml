@@ -31,8 +31,6 @@ jobs:
           GOOS=linux   GOARCH=amd64 go build -ldflags "$LDFLAGS" -o "dist/probe-agent-linux-amd64-${GITHUB_REF_NAME}"  ./cmd/probe-agent/
           GOOS=linux   GOARCH=arm64 go build -ldflags "$LDFLAGS" -o "dist/probe-agent-linux-arm64-${GITHUB_REF_NAME}"  ./cmd/probe-agent/
           GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o "dist/probe-agent-windows-amd64-${GITHUB_REF_NAME}.exe" ./cmd/probe-agent/
-          GOOS=darwin  GOARCH=amd64 go build -ldflags "$LDFLAGS" -o "dist/probe-agent-darwin-amd64-${GITHUB_REF_NAME}"   ./cmd/probe-agent/
-          GOOS=darwin  GOARCH=arm64 go build -ldflags "$LDFLAGS" -o "dist/probe-agent-darwin-arm64-${GITHUB_REF_NAME}"   ./cmd/probe-agent/
 
       - name: Create archives
         run: |
@@ -65,8 +63,6 @@ jobs:
             | `probe-agent-linux-amd64-${{ github.ref_name }}` | Linux x86_64 |
             | `probe-agent-linux-arm64-${{ github.ref_name }}` | Linux ARM64 |
             | `probe-agent-windows-amd64-${{ github.ref_name }}.exe` | Windows x86_64 |
-            | `probe-agent-darwin-amd64-${{ github.ref_name }}` | macOS Intel |
-            | `probe-agent-darwin-arm64-${{ github.ref_name }}` | macOS Apple Silicon |
 
             `checksums.txt` — SHA256 of all files above.
           files: dist/*

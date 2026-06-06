@@ -22,13 +22,7 @@ build-linux-arm64:
 build-windows-amd64:
 	GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o $(BIN)-windows-amd64.exe ./cmd/probe-agent/
 
-build-darwin-amd64:
-	GOOS=darwin GOARCH=amd64 go build $(LDFLAGS) -o $(BIN)-darwin-amd64 ./cmd/probe-agent/
-
-build-darwin-arm64:
-	GOOS=darwin GOARCH=arm64 go build $(LDFLAGS) -o $(BIN)-darwin-arm64 ./cmd/probe-agent/
-
-release: clean build-linux-amd64 build-linux-arm64 build-windows-amd64 build-darwin-amd64 build-darwin-arm64
+release: clean build-linux-amd64 build-linux-arm64 build-windows-amd64
 
 # ── Test ───────────────────────────────────────────────────────────────────────
 
@@ -52,7 +46,7 @@ vet:
 # ── Clean ──────────────────────────────────────────────────────────────────────
 
 clean:
-	rm -f $(BIN) $(BIN)-linux-amd64 $(BIN)-linux-arm64 $(BIN)-windows-amd64.exe $(BIN)-darwin-amd64 $(BIN)-darwin-arm64
+	rm -f $(BIN) $(BIN)-linux-amd64 $(BIN)-linux-arm64 $(BIN)-windows-amd64.exe
 
 # ── Run ────────────────────────────────────────────────────────────────────────
 
