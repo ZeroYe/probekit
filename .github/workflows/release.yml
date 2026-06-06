@@ -22,7 +22,10 @@ jobs:
           check-latest: true
 
       - name: Build all platforms
+        working-directory: ${{ github.workspace }}
         run: |
+          ls -la
+          ls -la cmd/probe-agent/ || true
           VERSION="${GITHUB_REF_NAME#v}"
           LDFLAGS="-X probe-agent/internal/selfmetrics.BuildVersion=${VERSION}"
 
@@ -33,8 +36,8 @@ jobs:
           GOOS=windows GOARCH=amd64 go build -ldflags "$LDFLAGS" -o "dist/probe-agent-windows-amd64-${GITHUB_REF_NAME}.exe" ./cmd/probe-agent/
 
       - name: Create archives
+        working-directory: ${{ github.workspace }}/dist
         run: |
-          cd dist
           for f in probe-agent-*; do
             ext="${f##*.}"
             if [ "$ext" = "exe" ]; then
@@ -45,8 +48,8 @@ jobs:
           done
 
       - name: Generate checksums
+        working-directory: ${{ github.workspace }}/dist
         run: |
-          cd dist
           sha256sum probe-agent-* > checksums.txt
 
       - name: Create Release
