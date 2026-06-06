@@ -1,0 +1,38 @@
+# ============================================================
+# HTTP 服务健康检测配置
+# ============================================================
+
+targets:
+    # 检测 URL
+  - url: "https://example.com/health"
+
+    # 请求方法 (GET / POST / HEAD 等)
+    method: GET
+
+    # 期望的 HTTP 状态码（满足任一即视为正常）
+    expected_status_codes: [200, 301]
+
+    # 可选：响应体需包含此字符串才算 up（为空则不检查）
+    expected_body_contains: "ok"
+
+    # 请求超时
+    timeout: 10s
+
+    # 检测间隔
+    interval: 60s
+
+    # 自定义请求头
+    headers:
+      User-Agent: "ProbeKit/1.0"
+
+    # 附加标签
+    labels:
+      service: example
+
+  - url: "https://api.example.com/v1/status"
+    method: GET
+    expected_status_codes: [200]
+    timeout: 5s
+    interval: 30s
+    labels:
+      service: api

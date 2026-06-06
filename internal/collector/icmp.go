@@ -22,12 +22,17 @@ type ICMPCollector struct {
 	cfg     config.ICMPConfig
 	runners []*icmpRunner
 	logger  *zap.Logger
+	sem     chan struct{}
 }
 
-func NewICMPCollector(cfg config.ICMPConfig, logger *zap.Logger) *ICMPCollector {
+func NewICMPCollector(cfg config.ICMPConfig, logger *zap.Logger, concurrency int) *ICMPCollector {
+	if concurrency <= 0 {
+		concurrency = 20
+	}
 	return &ICMPCollector{
 		cfg:    cfg,
 		logger: logger.Named("icmp"),
+		sem:    make(chan struct{}, concurrency),
 	}
 }
 
@@ -40,12 +45,12 @@ func (c *ICMPCollector) Start(ctx context.Context, pipeline *output.Pipeline) er
 	}
 
 	for _, t := range c.cfg.Targets {
-		runner := newICMPRunner(t, c.cfg.HistogramBucketsMs, c.logger)
+		runner := newICMPRunner(t, c.cfg.HistogramBucketsMs, c.sem, c.logger)
 		c.runners = append(c.runners, runner)
 		go runner.run(ctx, pipeline)
 	}
 
-	c.logger.Info("started", zap.Int("targets", len(c.runners)))
+	c.logger.Info("started", zap.Int("targets", len(c.runners)), zap.Int("concurrency", cap(c.sem)))
 	return nil
 }
 
@@ -65,9 +70,10 @@ type icmpRunner struct {
 	consecLoss  int
 	stopped     bool
 	mu          sync.Mutex
+	sem         chan struct{}
 }
 
-func newICMPRunner(target config.ICMPTarget, bucketsMs []int, logger *zap.Logger) *icmpRunner {
+func newICMPRunner(target config.ICMPTarget, bucketsMs []int, sem chan struct{}, logger *zap.Logger) *icmpRunner {
 	buckets := make([]float64, len(bucketsMs))
 	for i, v := range bucketsMs {
 		buckets[i] = float64(v)
@@ -78,6 +84,7 @@ func newICMPRunner(target config.ICMPTarget, bucketsMs []int, logger *zap.Logger
 		buckets:   buckets,
 		histogram: metrics.NewHistogram(buckets),
 		protocol:  1,
+		sem:       sem,
 		logger:    logger.With(zap.String("target", target.Host)),
 	}
 }
@@ -95,10 +102,19 @@ func (r *icmpRunner) isStopped() bool {
 }
 
 func (r *icmpRunner) run(ctx context.Context, pipeline *output.Pipeline) {
+	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
+	if err != nil {
+		r.logger.Error("listen icmp", zap.Error(err))
+		return
+	}
+	defer conn.Close()
+
 	ticker := time.NewTicker(r.target.Interval)
 	defer ticker.Stop()
 
-	r.probe(pipeline)
+	r.sem <- struct{}{}
+	r.probe(conn, pipeline)
+	<-r.sem
 
 	for {
 		select {
@@ -108,12 +124,14 @@ func (r *icmpRunner) run(ctx context.Context, pipeline *output.Pipeline) {
 			if r.isStopped() {
 				return
 			}
-			r.probe(pipeline)
+			r.sem <- struct{}{}
+			r.probe(conn, pipeline)
+			<-r.sem
 		}
 	}
 }
 
-func (r *icmpRunner) probe(pipeline *output.Pipeline) {
+func (r *icmpRunner) probe(conn *icmp.PacketConn, pipeline *output.Pipeline) {
 	addr := &net.IPAddr{IP: net.ParseIP(r.target.Host)}
 	if addr.IP == nil {
 		r.logger.Warn("invalid target address")
@@ -122,13 +140,7 @@ func (r *icmpRunner) probe(pipeline *output.Pipeline) {
 
 	up := 1.0
 
-	conn, err := icmp.ListenPacket("ip4:icmp", "0.0.0.0")
-	if err != nil {
-		r.logger.Warn("listen icmp", zap.Error(err))
-		return
-	}
-
-	id := idFromConn(conn)
+	id := os.Getpid() & 0xffff
 	timeout := r.target.Timeout
 	deadline := time.Now().Add(timeout)
 	conn.SetDeadline(deadline)
@@ -191,8 +203,6 @@ func (r *icmpRunner) probe(pipeline *output.Pipeline) {
 		rtt := time.Since(sendTimes[echo.Seq]).Seconds() * 1000
 		rtts = append(rtts, rtt)
 	}
-
-	conn.Close()
 
 	if len(rtts) == 0 {
 		r.consecLoss++
@@ -269,10 +279,6 @@ func (r *icmpRunner) buildMetrics(rtts []float64, lost int, up float64, labels m
 	ms = append(ms, histMs...)
 
 	return ms
-}
-
-func idFromConn(_ *icmp.PacketConn) int {
-	return os.Getpid() & 0xffff
 }
 
 func calcLossRatio(lost, total int) float64 {

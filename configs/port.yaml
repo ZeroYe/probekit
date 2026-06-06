@@ -1,0 +1,31 @@
+# ============================================================
+# 端口连通性检测配置
+# ============================================================
+
+targets:
+    # 目标主机地址
+  - host: "192.168.1.1"
+
+    # 目标端口
+    port: 443
+
+    # 协议: tcp / udp
+    protocol: tcp
+
+    # 拨号超时
+    timeout: 5s
+
+    # 检测间隔
+    interval: 30s
+
+    # 附加标签
+    labels:
+      service: web-https
+
+  - host: "8.8.8.8"
+    port: 53
+    protocol: udp
+    timeout: 5s
+    interval: 60s
+    labels:
+      service: dns

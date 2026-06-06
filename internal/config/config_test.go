@@ -36,6 +36,8 @@ func TestLoadAllConfigs(t *testing.T) {
 	writeYAML(t, dir, "icmp.yaml", icmpYAML)
 	writeYAML(t, dir, "snmp.yaml", snmpYAML)
 	writeYAML(t, dir, "dns.yaml", dnsYAML)
+	writeYAML(t, dir, "port.yaml", portYAML)
+	writeYAML(t, dir, "http.yaml", httpYAML)
 
 	cfg, err := Load(dir)
 	if err != nil {
@@ -50,6 +52,12 @@ func TestLoadAllConfigs(t *testing.T) {
 	}
 	if len(cfg.DNS.Targets) != 3 {
 		t.Errorf("dns: expected 3 targets, got %d", len(cfg.DNS.Targets))
+	}
+	if len(cfg.Port.Targets) != 2 {
+		t.Errorf("port: expected 2 targets, got %d", len(cfg.Port.Targets))
+	}
+	if len(cfg.HTTP.Targets) != 2 {
+		t.Errorf("http: expected 2 targets, got %d", len(cfg.HTTP.Targets))
 	}
 }
 
@@ -123,6 +131,37 @@ targets:
               type: "counter"
   - host: "192.168.1.2"
     interval: 120s
+`
+
+const portYAML = `targets:
+  - host: "192.168.1.1"
+    port: 443
+    protocol: tcp
+    timeout: 5s
+    interval: 30s
+    labels:
+      service: web
+  - host: "8.8.8.8"
+    port: 53
+    protocol: udp
+    timeout: 3s
+    interval: 60s
+`
+
+const httpYAML = `targets:
+  - url: "https://example.com/health"
+    method: GET
+    expected_status_codes: [200]
+    timeout: 10s
+    interval: 60s
+    labels:
+      service: example
+  - url: "https://api.example.com/status"
+    method: GET
+    expected_status_codes: [200, 301]
+    expected_body_contains: "ok"
+    timeout: 5s
+    interval: 30s
 `
 
 const dnsYAML = `targets:

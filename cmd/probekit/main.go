@@ -59,9 +59,11 @@ func main() {
 
 	colMgr := collector.NewManager()
 
-	colMgr.Add(collector.NewICMPCollector(cfg.ICMP, logger.Log))
+	colMgr.Add(collector.NewICMPCollector(cfg.ICMP, logger.Log, cfg.Global.Concurrency))
 	colMgr.Add(collector.NewDNSCollector(cfg.DNS, logger.Log))
 	colMgr.Add(collector.NewSNMPCollector(cfg.SNMP, logger.Log))
+	colMgr.Add(collector.NewPortCollector(cfg.Port, logger.Log))
+	colMgr.Add(collector.NewHTTPCollector(cfg.HTTP, logger.Log))
 
 	if err := colMgr.Start(ctx, pipeline); err != nil {
 		logger.Log.Error("failed to start collectors", zap.Error(err))
@@ -106,6 +108,8 @@ func main() {
 					"icmp": len(cfg.ICMP.Targets),
 					"dns":  len(cfg.DNS.Targets),
 					"snmp": len(cfg.SNMP.Targets),
+					"port": len(cfg.Port.Targets),
+					"http": len(cfg.HTTP.Targets),
 				}
 			})
 			mcpServer.AddHandler(cfg.Global.SelfMetrics.Path, selfmetrics.Handler(cfg.Global.SelfMetrics.CollectRuntime, tc))
@@ -168,8 +172,10 @@ func (f targetCounterFn) Counts() map[string]int { return f() }
 
 func restartCollectors(colMgr *collector.Manager, cfg *config.Config, pipeline *output.Pipeline) error {
 	colMgr.Reset()
-	colMgr.Add(collector.NewICMPCollector(cfg.ICMP, logger.Log))
+	colMgr.Add(collector.NewICMPCollector(cfg.ICMP, logger.Log, cfg.Global.Concurrency))
 	colMgr.Add(collector.NewDNSCollector(cfg.DNS, logger.Log))
 	colMgr.Add(collector.NewSNMPCollector(cfg.SNMP, logger.Log))
+	colMgr.Add(collector.NewPortCollector(cfg.Port, logger.Log))
+	colMgr.Add(collector.NewHTTPCollector(cfg.HTTP, logger.Log))
 	return colMgr.Start(context.Background(), pipeline)
 }

@@ -13,6 +13,8 @@ type Config struct {
 	ICMP   ICMPConfig
 	SNMP   SNMPConfig
 	DNS    DNSConfig
+	Port   PortConfig
+	HTTP   HTTPConfig
 }
 
 func Load(configDir string) (*Config, error) {
@@ -34,6 +36,14 @@ func Load(configDir string) (*Config, error) {
 		return nil, fmt.Errorf("dns config: %w", err)
 	}
 
+	if err := loadYAML(filepath.Join(configDir, "port.yaml"), &cfg.Port); err != nil {
+		return nil, fmt.Errorf("port config: %w", err)
+	}
+
+	if err := loadYAML(filepath.Join(configDir, "http.yaml"), &cfg.HTTP); err != nil {
+		return nil, fmt.Errorf("http config: %w", err)
+	}
+
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("config validation: %w", err)
 	}
@@ -51,7 +61,13 @@ func (c *Config) Validate() error {
 	if err := c.SNMP.Validate(); err != nil {
 		return err
 	}
-	return c.DNS.Validate()
+	if err := c.DNS.Validate(); err != nil {
+		return err
+	}
+	if err := c.Port.Validate(); err != nil {
+		return err
+	}
+	return c.HTTP.Validate()
 }
 
 func loadYAML(path string, out any) error {
