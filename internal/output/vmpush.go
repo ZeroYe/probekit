@@ -101,18 +101,14 @@ func (v *VMPusher) flushLoop() {
 
 func (v *VMPusher) flush() {
 	metrics := v.buffer.PopN(v.cfg.BatchSize)
-	if len(metrics) == 0 {
-		return
+	if len(metrics) > 0 {
+		selfmetrics.QueueLength.Store(int64(v.buffer.Len()))
+		v.batcher.Add(metrics)
 	}
 
-	selfmetrics.QueueLength.Store(int64(v.buffer.Len()))
-
-	data := v.batcher.Add(metrics)
-	if data == "" {
-		return
+	if data := v.batcher.Flush(); data != "" {
+		v.push(data)
 	}
-
-	v.push(data)
 }
 
 func (v *VMPusher) push(data string) {
