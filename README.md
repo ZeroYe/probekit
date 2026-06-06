@@ -10,7 +10,7 @@
 - **端口检测** — TCP/UDP 端口连通性检测，输出拨号耗时
 - **HTTP 检测** — HTTP 状态码 + 响应体包含字符串检查
 - **VictoriaMetrics 推送** — Prometheus 文本格式 via `/api/v1/import/prometheus`，支持批量和指数退避重试
-- **MCP 服务** — Streamable HTTP 传输，API Key 鉴权，5 个查询和管理工具
+- **MCP 服务** — Streamable HTTP 传输，API Key 鉴权，6 个查询和管理工具（含批量添加），带文件上传端点
 - **自身指标** — 代理健康指标暴露在 `/metrics` (Prometheus 抓取端点)
 - **热重载** — 通过 `SIGHUP` 信号或 MCP `reload_config` 工具热加载配置
 - **目标隔离** — 每个监控目标在独立 goroutine 中运行，拥有独立的超时控制，单目标失败不影响其他目标
@@ -75,9 +75,17 @@ self_metrics:
 
 ### ICMP 配置 `configs/icmp.yaml`
 
+ICMP 模块有独立的推送通道，可单独设置推送间隔和 batch 大小（省略则继承全局 `victoria_metrics` 默认值）：
+
 ```yaml
+# 可选：ICMP 模块独立的推送参数
+flush_interval: 10s
+batch_size: 1000
+buffer_size: 20000
+
 histogram_buckets_ms: [1, 5, 10, 20, 50, 100, 200, 500, 1000]  # RTT 直方图桶 (ms)
 
+# 内联目标
 targets:
   - host: "8.8.8.8"
     interval: 60s                  # 每 60 秒探测一次
@@ -94,6 +102,41 @@ targets:
     labels:
       region: china
       isp: chinanet
+
+# 外部目标文件路径（支持绝对路径或相对路径）
+# 文件内容为 targets 数组 YAML，与内联 targets 自动合并
+# 适用于 2000+ 大规模目标，可用脚本批量生成
+# targets_file: "/etc/probekit/icmp_targets.yaml"
+```
+
+**外部目标文件示例** (`/etc/probekit/icmp_targets.yaml`):
+```yaml
+- host: "10.0.0.1"
+  interval: 60s
+  count: 4
+  timeout: 5s
+  labels:
+    region: cn-beijing
+    rack: A01
+- host: "10.0.0.2"
+  interval: 60s
+  count: 4
+  timeout: 5s
+  labels:
+    region: cn-shanghai
+    rack: B03
+```
+
+**批量生成脚本** (`scripts/gen-icmp-targets.sh`):
+```bash
+# 从 IP 列表文件生成（每行一个 IP）
+cat ips.txt | ./scripts/gen-icmp-targets.sh --label region=cn-beijing > /etc/probekit/icmp_targets.yaml
+
+# 从 CIDR 段生成
+./scripts/gen-icmp-targets.sh --cidr 10.0.0.0/24 --label region=cn-beijing > /etc/probekit/icmp_targets.yaml
+
+# 从 CSV 生成（每行可带独立标签）
+./scripts/gen-icmp-targets.sh --csv targets.csv > /etc/probekit/icmp_targets.yaml
 ```
 
 **ICMP 生成的指标（每个 target）：**
@@ -115,6 +158,10 @@ targets:
 ### DNS 配置 `configs/dns.yaml`
 
 ```yaml
+# 可选：模块独立的推送参数（省略则继承全局）
+# flush_interval: 10s
+# batch_size: 500
+
 targets:
   - domain: "example.com"
     server: "8.8.8.8"             # 指定 DNS 服务器
@@ -153,6 +200,10 @@ targets:
 ### SNMP 配置 `configs/snmp.yaml`
 
 ```yaml
+# 可选：模块独立的推送参数（省略则继承全局）
+# flush_interval: 15s
+# batch_size: 300
+
 defaults:
   version: "2c"                    # SNMP 版本: 1 / 2c / 3
   community: "public"              # SNMP 团体名
@@ -223,6 +274,10 @@ targets:
 ### 端口检测配置 `configs/port.yaml`
 
 ```yaml
+# 可选：模块独立的推送参数（省略则继承全局）
+# flush_interval: 10s
+# batch_size: 500
+
 targets:
   - host: "192.168.1.1"
     port: 443
@@ -251,6 +306,10 @@ targets:
 ### HTTP 检测配置 `configs/http.yaml`
 
 ```yaml
+# 可选：模块独立的推送参数（省略则继承全局）
+# flush_interval: 10s
+# batch_size: 500
+
 targets:
   - url: "https://example.com/health"
     method: GET
@@ -320,6 +379,8 @@ sudo setcap cap_net_raw+ep ./ProbeKit
 
 MCP (Model Context Protocol) 允许 AI 助手（如 Claude）直接查询和管理监控系统。连接地址为 `http://host:9801/mcp`。
 
+ProbeKit 提供 **6 个 MCP 工具**：`get_targets`、`get_metrics`、`add_target`、`batch_add_targets`、`remove_target`、`reload_config`。另外 `add_target` 和 `remove_target` 也支持 Port / HTTP 模块。
+
 ### 准备
 
 ```bash
@@ -337,9 +398,19 @@ curl -s -X POST http://localhost:9801/mcp \
   -d '{}'
 ```
 
+### 外部目标文件与 MCP 工具的关系
+
+当模块使用 `targets_file`（如 icmp.yaml 中的 `targets_file: /etc/probekit/icmp_targets.yaml`）时：
+
+- **`get_targets`**：可以正常查询外部文件的全部目标（配置加载时会合并到内存）
+- **`add_target` / `remove_target`**：操作的是 icmp.yaml 中的内联 `targets` 列表，而非外部文件
+- **`batch_add_targets`**：支持追加到外部文件——当模块配置了 `targets_file` 时，新增目标会追加到该文件
+
+对于外部文件中的大量目标，建议先用脚本批量生成，再通过 AI 辅助的 `batch_add_targets` 增量管理。
+
 ### 1. `get_targets` — 查询所有监控目标
 
-列出所有目标、所属模块和 UP/DOWN 状态。
+列出所有目标、所属模块和 UP/DOWN 状态。支持所有 6 个模块（icmp / dns / snmp / port / http）。
 
 ```bash
 # 查询全部目标
@@ -527,11 +598,261 @@ curl -s -X POST http://localhost:9801/mcp \
   }' | jq .
 ```
 
+```bash
+# 添加 Port 目标
+curl -s -X POST http://localhost:9801/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-probe-change-me" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "add_target",
+      "arguments": {
+        "module": "port",
+        "host": "192.168.1.1",
+        "port": 443,
+        "protocol": "tcp",
+        "interval": "30s"
+      }
+    }
+  }' | jq .
+```
+
+```bash
+# 添加 HTTP 目标
+curl -s -X POST http://localhost:9801/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-probe-change-me" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "add_target",
+      "arguments": {
+        "module": "http",
+        "host": "https://example.com/health",
+        "method": "GET",
+        "interval": "60s",
+        "labels": "{\"service\":\"example\"}"
+      }
+    }
+  }' | jq .
+```
+
 **AI 助手用法示例：**
 > 用户："帮我添加一个新的监控目标，ICMP ping 1.1.1.1"
 > AI 调用 `add_target("icmp", "1.1.1.1", "30s")` → 配置写入 YAML，采集器热重启 → AI 确认"已添加 1.1.1.1，30 秒间隔"
 
-### 4. `remove_target` — 删除监控目标
+### 4. `batch_add_targets` — 批量添加监控目标
+
+一次性添加多个目标。支持**两种模式**：
+
+#### 模式 A：命令行参数模式（`hosts` + 公共参数）
+
+适用于多个主机共用相同参数的场景：
+
+```bash
+# 从 IP 列表批量添加 ICMP 目标
+curl -s -X POST http://localhost:9801/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-probe-change-me" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "batch_add_targets",
+      "arguments": {
+        "module": "icmp",
+        "hosts": "10.0.0.1,10.0.0.2,10.0.0.3",
+        "interval": "60s",
+        "labels": "{\"region\":\"cn-beijing\",\"role\":\"gateway\"}"
+      }
+    }
+  }' | jq .
+
+# 返回示例
+{
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "added 3 targets to icmp and reloaded config"
+      }
+    ]
+  }
+}
+```
+
+```bash
+# 从 CIDR 段批量添加（展开所有 IP）
+curl -s -X POST http://localhost:9801/mcp \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-probe-change-me" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "batch_add_targets",
+      "arguments": {
+        "module": "icmp",
+        "hosts": "10.0.0.0/28",
+        "interval": "60s",
+        "count": 4,
+        "timeout": "5s",
+        "labels": "{\"region\":\"cn-beijing\"}"
+      }
+    }
+  }' | jq .
+```
+
+**参数说明（模式 A）：**
+- `module` — 模块名（icmp / dns / snmp / port / http）
+- `hosts` — 逗号分隔的 IP/域名列表，或 CIDR 段（如 `10.0.0.0/24`）
+- `interval` — 探测间隔，默认 60s
+- `count` — 仅 ICMP 模块，发包数，默认 4
+- `timeout` — 超时时间，默认 5s
+- `port` — 仅 Port 模块，端口号
+- `protocol` — 仅 Port 模块，`tcp` 或 `udp`
+- `method` / `expected_body_contains` — 仅 HTTP 模块
+- `labels` — JSON 格式标签，如 `{"region":"cn-beijing"}`
+
+**AI 助手用法示例：**
+> 用户："帮我监控 10.0.0.1 到 10.0.0.10 这些 IP"
+> AI 调用 `batch_add_targets("icmp", "10.0.0.1,10.0.0.2,...,10.0.0.10", "60s")` → 10 个目标写入 YAML → AI 确认"已添加 10 个 ICMP 目标"
+
+#### 模式 B：CSV 模式（`csv` / `csv_file` 参数）
+
+适用于每个目标有不同参数（如不同标签、不同端口）的场景。根据数据量选择方式：
+
+- **小批量（< 100 行）**：用 `csv` 参数，AI 助手先输出 CSV 模板，用户填写后发回
+- **大批量（100~10000 行）**：用 `csv_file` 参数，在 ProbeKit 服务器上准备好 CSV 文件，AI 直接读取
+
+**工作流程（小批量）：**
+
+```
+用户: "帮我批量添加这些 IP 到 ICMP 监控"
+  → AI 生成 CSV 模板发给用户
+  → 用户填写 CSV 发回给 AI
+  → AI 调用 batch_add_targets(module="icmp", csv="...")
+  → 目标写入 YAML，配置重载
+```
+
+**工作流程（大批量，推荐）：**
+
+#### 方式一：服务器本地已有 CSV 文件
+
+```bash
+# 在服务器上准备好 CSV 文件
+cat > /tmp/targets.csv << 'CSV'
+host,interval,count,timeout,labels
+10.0.0.1,60s,4,5s,region=cn-beijing|rack=A01
+10.0.0.2,60s,4,5s,region=cn-shanghai|rack=B03
+CSV
+```
+
+```
+用户: "我 /tmp/targets.csv 里准备了 1000 个目标，帮我加到 ICMP 监控"
+  → AI 调用 batch_add_targets(module="icmp", csv_file="/tmp/targets.csv")
+  → 读取本地文件、解析 CSV、追加到 targets_file、重载配置
+  → "已添加 1000 个 ICMP 目标"
+```
+
+#### 方式二：通过 HTTP 上传文件（从本机上传）
+
+ProbeKit 的 MCP 服务提供 `POST /upload` 上传端点，用户可直接从本机上传 CSV 文件到服务器：
+
+```bash
+# 使用 API Key 认证上传文件
+curl -X POST http://localhost:9801/upload \
+  -H "Authorization: Bearer sk-probe-change-me" \
+  -F "file=@/path/to/local/targets.csv"
+
+# 返回上传后的文件路径，例如：
+# /etc/probekit/uploads/a1b2c3d4_targets.csv
+```
+
+上传后返回完整路径，用户告诉 AI 路径，AI 调用 `batch_add_targets` 处理：
+
+```
+用户: "我上传了 CSV 到服务器，路径是 /etc/probekit/uploads/a1b2c3d4_targets.csv"
+  → AI 调用 batch_add_targets(module="icmp", csv_file="/etc/probekit/uploads/a1b2c3d4_targets.csv")
+  → 读取、解析、追加、重载
+  → "已添加 1000 个 ICMP 目标"
+```
+
+**各模块 CSV 模板示例：**
+
+ICMP:
+```csv
+host,interval,count,timeout,labels
+10.0.0.1,60s,4,5s,region=cn-beijing|rack=A01|role=gw
+10.0.0.2,60s,4,5s,region=cn-shanghai|rack=B03|role=sw
+10.0.0.3,30s,4,5s,region=cn-beijing|rack=A02|role=web
+```
+
+DNS:
+```csv
+host,server,record_type,interval,labels
+example.com,8.8.8.8,A,60s,type=external
+internal.corp.com,10.0.0.53,A,30s,type=internal
+mail.example.com,1.1.1.1,MX,120s,service=mail
+```
+
+Port:
+```csv
+host,port,protocol,timeout,interval,labels
+192.168.1.1,443,tcp,5s,30s,service=web-https
+8.8.8.8,53,udp,5s,60s,service=dns
+```
+
+HTTP:
+```csv
+host,method,interval,timeout,labels
+https://example.com/health,GET,60s,10s,service=example
+https://api.example.com/status,GET,30s,5s,service=api
+```
+
+**支持的 CSV 列名（大小写不敏感）：**
+
+| 列名 | 说明 | 适用模块 |
+|------|------|----------|
+| `host` / `ip` / `domain` / `url` | 主机/IP/域名/URL | 全部 |
+| `interval` | 探测间隔 | 全部 |
+| `timeout` | 超时 | icmp, port, http |
+| `count` | 发包数 | icmp |
+| `port` | 端口号 | port |
+| `protocol` | 协议 tcp/udp | port |
+| `server` | DNS 服务器 | dns |
+| `record_type` / `type` | DNS 记录类型 | dns |
+| `method` | HTTP 方法 | http |
+| `labels` / `tags` | 标签，`key=value\|key2=value2` 格式 | 全部 |
+
+**AI 助手用法示例（CSV 模式）：**
+> **用户：** "帮我把这些机器加到 ICMP 监控，每台机器的标签不一样"
+>
+> **AI：** 好的，这是 CSV 模板，请填写每台机器的信息：
+> ```csv
+> host,interval,count,timeout,labels
+> ,60s,4,5s,
+> ,60s,4,5s,
+> ```
+> 
+> **用户：** "填好了：
+> ```csv
+> host,interval,count,timeout,labels
+> 10.0.0.1,60s,4,5s,region=cn-beijing|rack=A01
+> 10.0.0.2,60s,4,5s,region=cn-shanghai|rack=B03
+> 10.0.0.3,30s,4,5s,region=cn-beijing|rack=A02
+> ```"
+>
+> **AI 调用 `batch_add_targets(module="icmp", csv="...")` → 确认"已添加 3 个 ICMP 目标"**
+
+### 5. `remove_target` — 删除监控目标
 
 ```bash
 # 删除 ICMP 目标
@@ -574,7 +895,7 @@ curl -s -X POST ... -d '{"name":"remove_target","arguments":{"module":"icmp","ho
 > 用户："把 1.1.1.1 从监控中移除"
 > AI 调用 `remove_target("icmp", "1.1.1.1")` → 从 YAML 删除，热重启 → AI 确认"已移除"
 
-### 5. `reload_config` — 热重载配置
+### 6. `reload_config` — 热重载配置
 
 ```bash
 # 手动编辑了 configs/ 目录下的 YAML 文件后，触发重载

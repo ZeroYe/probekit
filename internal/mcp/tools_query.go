@@ -14,7 +14,7 @@ func (s *Server) registerGetTargets() {
 	tool := mcpcore.NewTool("get_targets",
 		mcpcore.WithDescription("List all monitoring targets with their module, host, and labels"),
 		mcpcore.WithString("module",
-			mcpcore.Description("Filter by module: icmp, snmp, dns (empty returns all)"),
+			mcpcore.Description("Filter by module: icmp, dns, snmp, port, http (empty returns all)"),
 		),
 	)
 
@@ -66,6 +66,29 @@ func (s *Server) handleGetTargets(ctx context.Context, req mcpcore.CallToolReque
 		}
 	}
 
+	if filter == "" || filter == "port" {
+		for _, t := range s.deps.Config.Port.Targets {
+			regKey := fmt.Sprintf("port/%s|%s|%d", t.Host, t.Protocol, t.Port)
+			targets = append(targets, targetInfo{
+				Host:   fmt.Sprintf("%s:%d", t.Host, t.Port),
+				Module: "port",
+				Labels: t.Labels,
+				Up:     checkModuleUp(s.deps.Registry, regKey),
+			})
+		}
+	}
+
+	if filter == "" || filter == "http" {
+		for _, t := range s.deps.Config.HTTP.Targets {
+			targets = append(targets, targetInfo{
+				Host:   t.URL,
+				Module: "http",
+				Labels: t.Labels,
+				Up:     checkModuleUp(s.deps.Registry, "http/"+t.URL),
+			})
+		}
+	}
+
 	if len(targets) == 0 {
 		return mcpcore.NewToolResultText("No targets found."), nil
 	}
@@ -88,10 +111,10 @@ func (s *Server) registerGetMetrics() {
 		mcpcore.WithDescription("Get latest metrics for a specific target"),
 		mcpcore.WithString("target",
 			mcpcore.Required(),
-			mcpcore.Description("Target identifier: host IP for icmp/snmp, domain for dns"),
+			mcpcore.Description("Target identifier: host IP for icmp/snmp/port, domain for dns, URL for http"),
 		),
 		mcpcore.WithString("module",
-			mcpcore.Description("Module: icmp, snmp, dns (auto-detected if not specified)"),
+			mcpcore.Description("Module: icmp, dns, snmp, port, http (auto-detected if not specified)"),
 		),
 	)
 
@@ -151,6 +174,22 @@ func (s *Server) findMetricKeys(target, module string) []string {
 	if module == "" || module == "snmp" {
 		if key := "snmp/" + target; s.deps.Registry.Get(key) != nil {
 			allKeys = append(allKeys, key)
+		}
+	}
+
+	if module == "" || module == "port" {
+		for _, k := range s.deps.Registry.Keys() {
+			if strings.HasPrefix(k, "port/") && strings.Contains(k, target) {
+				allKeys = append(allKeys, k)
+			}
+		}
+	}
+
+	if module == "" || module == "http" {
+		for _, k := range s.deps.Registry.Keys() {
+			if strings.HasPrefix(k, "http/") && strings.Contains(k, target) {
+				allKeys = append(allKeys, k)
+			}
 		}
 	}
 

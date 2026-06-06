@@ -52,16 +52,22 @@ func New(deps Dependencies, cfg config.MCPConfig) (*Server, error) {
 		server.WithEndpointPath("/mcp"),
 	)
 
-	handler := http.Handler(s.httpServer)
+	s.mux = http.NewServeMux()
+
+	mcpHandler := http.Handler(s.httpServer)
 
 	if cfg.Auth.Type == "api_key" && len(cfg.Auth.Keys) > 0 {
 		s.auth = NewAPIKeyAuth(cfg.Auth.Keys)
-		handler = AuthMiddleware(handler, s.auth)
+		mcpHandler = AuthMiddleware(mcpHandler, s.auth)
 		deps.Logger.Info("mcp api key auth enabled")
 	}
 
-	s.mux = http.NewServeMux()
-	s.mux.Handle("/mcp", handler)
+	s.mux.Handle("/mcp", mcpHandler)
+	if s.auth != nil {
+		s.mux.Handle("/upload", AuthMiddleware(http.HandlerFunc(s.handleUpload), s.auth))
+	} else {
+		s.mux.Handle("/upload", http.HandlerFunc(s.handleUpload))
+	}
 
 	s.handler = s.mux
 
@@ -124,6 +130,7 @@ func (s *Server) registerTools() {
 	s.registerGetTargets()
 	s.registerGetMetrics()
 	s.registerAddTarget()
+	s.registerBatchAddTargets()
 	s.registerRemoveTarget()
 	s.registerReloadConfig()
 }
