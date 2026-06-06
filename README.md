@@ -4,9 +4,11 @@
 
 ## 功能特性
 
-- **ICMP 探测** — 多包 Ping，含 RTT 直方图 (p50/p90/p99)、抖动、标准差、丢包率、连续丢包计数
+- **ICMP 探测** — 多包 Ping，含 RTT 直方图 (p50/p90/p99)、抖动、标准差、丢包率、连续丢包计数，支持 2000+ 目标（持久化 socket + 信号量并发控制）
 - **DNS 探测** — A/AAAA/MX/NS/CNAME/TXT 查询，每个目标可指定独立 DNS 服务器
 - **SNMP 探测** — 标量 OID `Get` + 表 OID `Walk`，支持索引/标签提取，纯数值 OID（无需 MIB）
+- **端口检测** — TCP/UDP 端口连通性检测，输出拨号耗时
+- **HTTP 检测** — HTTP 状态码 + 响应体包含字符串检查
 - **VictoriaMetrics 推送** — Prometheus 文本格式 via `/api/v1/import/prometheus`，支持批量和指数退避重试
 - **MCP 服务** — Streamable HTTP 传输，API Key 鉴权，5 个查询和管理工具
 - **自身指标** — 代理健康指标暴露在 `/metrics` (Prometheus 抓取端点)
@@ -218,18 +220,79 @@ targets:
 
 ---
 
+### 端口检测配置 `configs/port.yaml`
+
+```yaml
+targets:
+  - host: "192.168.1.1"
+    port: 443
+    protocol: tcp               # tcp / udp
+    timeout: 5s
+    interval: 30s
+    labels:
+      service: web-https
+
+  - host: "8.8.8.8"
+    port: 53
+    protocol: udp
+    timeout: 5s
+    interval: 60s
+    labels:
+      service: dns
+```
+
+**端口检测生成的指标（每个 target）：**
+
+| 指标 | 类型 | 说明 |
+|------|------|------|
+| `port_up` | gauge | 1=连通, 0=不通 |
+| `port_dial_duration_seconds` | gauge | 拨号耗时 (秒) |
+
+### HTTP 检测配置 `configs/http.yaml`
+
+```yaml
+targets:
+  - url: "https://example.com/health"
+    method: GET
+    expected_status_codes: [200, 301]
+    expected_body_contains: "ok"       # 可选，响应体包含此字符串才算 up
+    timeout: 10s
+    interval: 60s
+    headers:
+      User-Agent: "ProbeKit/1.0"
+    labels:
+      service: example
+
+  - url: "https://api.example.com/v1/status"
+    method: GET
+    expected_status_codes: [200]
+    timeout: 5s
+    interval: 30s
+```
+
+**HTTP 检测生成的指标（每个 target）：**
+
+| 指标 | 类型 | 说明 |
+|------|------|------|
+| `http_up` | gauge | 1=正常, 0=异常（状态码不匹配或 body 不包含指定字符串） |
+| `http_status_code` | gauge | 返回的 HTTP 状态码 |
+| `http_duration_seconds` | gauge | 请求耗时 (秒) |
+| `http_response_size_bytes` | gauge | 响应体大小 (字节) |
+
+---
+
 ## 运行
 
 ```bash
 # Linux/macOS: ICMP 需要 root 或 CAP_NET_RAW
-sudo ./ProbeKit --config-dir ./config
+sudo ./ProbeKit --config-dir ./configs
 
 # 也可以赋予 CAP_NET_RAW 后以普通用户运行
 sudo setcap cap_net_raw+ep ./ProbeKit
-./ProbeKit --config-dir ./config
+./ProbeKit --config-dir ./configs
 
 # Windows: 以管理员身份运行
-./ProbeKit.exe --config-dir ./config
+./ProbeKit.exe --config-dir ./configs
 
 # 指定不同的配置文件目录
 ./ProbeKit --config-dir /etc/ProbeKit
@@ -240,9 +303,11 @@ sudo setcap cap_net_raw+ep ./ProbeKit
 ```
 2026-06-07T04:41:36.790+0800 INFO starting ProbeKit config_dir=./config
 2026-06-07T04:41:36.797+0800 INFO vm pusher started push_url=http://victoria:8428/api/v1/import/prometheus  flush_interval=10s  batch_size=500
-2026-06-07T04:41:36.797+0800 INFO icmp started targets=2
+2026-06-07T04:41:36.797+0800 INFO icmp started targets=2 concurrency=20
 2026-06-07T04:41:36.797+0800 INFO dns started targets=3
 2026-06-07T04:41:36.797+0800 INFO snmp started targets=2
+2026-06-07T04:41:36.797+0800 INFO port started targets=1
+2026-06-07T04:41:36.797+0800 INFO http started targets=2
 2026-06-07T04:41:36.797+0800 INFO mcp api key auth enabled
 2026-06-07T04:41:36.797+0800 INFO self metrics endpoint registered path=/metrics  collect_runtime=true
 2026-06-07T04:41:36.798+0800 INFO mcp server starting addr=:9801  endpoint=/mcp
@@ -592,6 +657,8 @@ probe_agent_queue_length 0
 probe_agent_targets{module="icmp"} 2
 probe_agent_targets{module="dns"} 3
 probe_agent_targets{module="snmp"} 2
+probe_agent_targets{module="port"} 1
+probe_agent_targets{module="http"} 2
 # HELP probe_agent_goroutines
 # TYPE probe_agent_goroutines gauge
 probe_agent_goroutines 15
@@ -634,6 +701,9 @@ probe_agent_gc_pauses_total 3
 | DNS 失败率 | `avg(1 - dns_up)` |
 | SNMP 可达性 | `avg(snmp_up)` |
 | 接口流量 | `rate(if_in_octets[5m]) * 8` |
+| 端口连通率 | `avg(port_up)` |
+| HTTP 可用率 | `avg(http_up)` |
+| HTTP 响应耗时 | `avg(http_duration_seconds)` |
 
 ---
 
@@ -645,7 +715,7 @@ probe_agent_gc_pauses_total 3
 
 ### 问：能支持多少监控目标？
 
-答：设计目标为 50–500 个 SNMP 目标 + 50–100 个 ICMP 目标 + 20–50 个 DNS 目标。每个目标独立 goroutine 运行，通过 channel 解耦采集与推送。
+答：ICMP 使用持久化 socket + 信号量并发控制（默认 20），可支持 **2000+ 目标**。DNS/SNMP/Port/HTTP 目标数受限于 goroutine 开销和网络带宽，单机通常可运行数千目标。每个目标独立 goroutine 运行，通过 channel 解耦采集与推送。
 
 ### 问：VictoriaMetrics 宕机怎么办？
 
@@ -680,13 +750,13 @@ curl -s -X POST http://localhost:9801/mcp \
 
 - ICMP 需要以管理员身份运行（否则原始套接字创建失败）
 - 如果不需要 ICMP，可在 icmp.yaml 中留空 targets 列表，或删除 icmp.yaml 文件
-- 路径使用 `\` 或 `/` 均可，建议用 `--config-dir ./config`
+- 路径使用 `\` 或 `/` 均可，建议用 `--config-dir ./configs`
 
 ### 问：如何配置日志轮转？
 
 当前日志输出到 stderr，建议使用系统工具管理：
 - Linux: `systemd-journald` 或 `logrotate` 配合重定向
-- Windows: 重定向到文件 `.\ProbeKit.exe --config-dir .\config > agent.log 2>&1`，配合第三方轮转工具
+- Windows: 重定向到文件 `.\ProbeKit.exe --config-dir .\configs > agent.log 2>&1`，配合第三方轮转工具
 
 ---
 
@@ -703,11 +773,11 @@ ICMP 原始套接字需要 `CAP_NET_RAW` 权限。三种方式：
 
 ```bash
 # 方式 1: root 运行
-sudo ./ProbeKit --config-dir ./config
+sudo ./ProbeKit --config-dir ./configs
 
 # 方式 2: 赋予 capability（推荐）
 sudo setcap cap_net_raw+ep ./ProbeKit
-./ProbeKit --config-dir ./config
+./ProbeKit --config-dir ./configs
 
 # 方式 3: 不加 ICMP 目标，只使用 DNS/SNMP
 # 在 icmp.yaml 中留空 targets: []

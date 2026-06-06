@@ -21,17 +21,21 @@ ProbeKit/
 ├── cmd/ProbeKit/main.go    # 程序入口
 ├── configs/                   # 示例 YAML 配置文件
 ├── internal/
-│   ├── collector/             # 采集器实现 (ICMP, DNS, SNMP)
+│   ├── collector/             # 采集器实现 (ICMP, DNS, SNMP, Port, HTTP)
 │   │   ├── collector.go       #   Collector 接口 + Manager
 │   │   ├── icmp.go
 │   │   ├── dns.go
-│   │   └── snmp.go
+│   │   ├── snmp.go
+│   │   ├── port.go
+│   │   └── http.go
 │   ├── config/                # 配置结构体 + YAML 加载
 │   │   ├── config.go          #   顶层 Config, Load()
 │   │   ├── global.go          #   GlobalConfig, VMConfig, MCPConfig
 │   │   ├── icmp.go            #   ICMPConfig, ICMPTarget
 │   │   ├── dns.go
-│   │   └── snmp.go
+│   │   ├── snmp.go
+│   │   ├── port.go
+│   │   └── http.go
 │   ├── logger/                # zap 日志封装
 │   ├── mcp/                   # MCP HTTP 服务 + 工具
 │   │   ├── server.go          #   Server (ServeMux, 生命周期)
@@ -102,17 +106,17 @@ go test -v -count=1 ./internal/metrics/
 
 ```bash
 # 源码运行
-go run ./cmd/ProbeKit/ --config-dir ./config
+go run ./cmd/ProbeKit/ --config-dir ./configs
 
 # 编译后运行
-./ProbeKit --config-dir ./config
+./ProbeKit --config-dir ./configs
 ```
 
 ## 架构
 
 ```
-采集器 (ICMP/DNS/SNMP)
-    │  每个 target 独立 goroutine, 定时执行
+采集器 (ICMP/DNS/SNMP/Port/HTTP)
+    │  每个 target 独立 goroutine, 定时执行 (ICMP 受全局 concurrency 信号量控制)
     ▼
 Pipeline.Submit(key, metrics)
     │
@@ -141,6 +145,8 @@ type Collector interface {
     Stop() error
 }
 ```
+
+ICMP 采集器额外接收 `concurrency int` 参数用于信号量并发控制，其余采集器只接收 config 和 logger。
 
 2. 在 `internal/config/<name>.go` 中创建对应配置类型，实现 `Validate()`。
 3. 在 `internal/config/config.go` 中添加配置结构体字段。
