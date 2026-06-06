@@ -19,7 +19,7 @@ import (
 
 func main() {
 	var configDir string
-	flag.StringVar(&configDir, "config-dir", "./config", "path to config directory")
+	flag.StringVar(&configDir, "config-dir", "./configs", "path to config directory")
 	flag.Parse()
 
 	cfg, err := config.Load(configDir)

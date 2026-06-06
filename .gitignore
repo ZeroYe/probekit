@@ -15,6 +15,9 @@ stderr.txt
 *.swp
 *.swo
 
+# Session
+session.json
+
 # OS
 .DS_Store
 Thumbs.db

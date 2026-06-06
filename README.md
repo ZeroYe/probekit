@@ -41,7 +41,7 @@ make release                       # 所有平台
 
 ## 配置详解
 
-### 全局配置 `config/global.yaml`
+### 全局配置 `configs/global.yaml`
 
 ```yaml
 concurrency: 20                    # 最大并发操作数
@@ -71,7 +71,7 @@ self_metrics:
   collect_runtime: true            # 是否包含 Go 运行时指标（goroutine 数、内存等）
 ```
 
-### ICMP 配置 `config/icmp.yaml`
+### ICMP 配置 `configs/icmp.yaml`
 
 ```yaml
 histogram_buckets_ms: [1, 5, 10, 20, 50, 100, 200, 500, 1000]  # RTT 直方图桶 (ms)
@@ -110,7 +110,7 @@ targets:
 | `icmp_rtt_count` | gauge | 成功收到回复数 |
 | `icmp_rtt_sum` | gauge | RTT 总和 |
 
-### DNS 配置 `config/dns.yaml`
+### DNS 配置 `configs/dns.yaml`
 
 ```yaml
 targets:
@@ -148,7 +148,7 @@ targets:
 | `dns_answer_count` | gauge | 返回的答案数 |
 | `dns_response` | gauge | 响应码: 0=NOERROR, 1=NXDOMAIN, 2=TIMEOUT, 3=SERVFAIL |
 
-### SNMP 配置 `config/snmp.yaml`
+### SNMP 配置 `configs/snmp.yaml`
 
 ```yaml
 defaults:
@@ -512,7 +512,7 @@ curl -s -X POST ... -d '{"name":"remove_target","arguments":{"module":"icmp","ho
 ### 5. `reload_config` — 热重载配置
 
 ```bash
-# 手动编辑了 config/ 目录下的 YAML 文件后，触发重载
+# 手动编辑了 configs/ 目录下的 YAML 文件后，触发重载
 curl -s -X POST http://localhost:9801/mcp \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer sk-probe-change-me" \

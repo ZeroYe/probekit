@@ -19,7 +19,7 @@
 ```
 ProbeKit/
 ├── cmd/ProbeKit/main.go    # 程序入口
-├── config/                    # 示例 YAML 配置文件
+├── configs/                   # 示例 YAML 配置文件
 ├── internal/
 │   ├── collector/             # 采集器实现 (ICMP, DNS, SNMP)
 │   │   ├── collector.go       #   Collector 接口 + Manager
@@ -145,7 +145,7 @@ type Collector interface {
 2. 在 `internal/config/<name>.go` 中创建对应配置类型，实现 `Validate()`。
 3. 在 `internal/config/config.go` 中添加配置结构体字段。
 4. 在 `cmd/ProbeKit/main.go` 中通过 `colMgr.Add(collector.NewXxxCollector(...))` 注册。
-5. 添加配置文件 `config/<name>.yaml`。
+5. 添加配置文件 `configs/<name>.yaml`。
 6. 在 `restartCollectors()` 和 MCP 管理工具中添加对应逻辑。
 
 ### 采集器职责
