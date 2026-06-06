@@ -5,7 +5,7 @@
 | 层 | 选择 |
 |---|---|
 | 语言 | Go 1.26.4 |
-| 模块 | `probe-agent` |
+| 模块 | `ProbeKit` |
 | 日志 | `go.uber.org/zap` |
 | 配置 | `gopkg.in/yaml.v3` |
 | ICMP 探测 | `golang.org/x/net/icmp` |
@@ -17,8 +17,8 @@
 ## 项目结构
 
 ```
-probe-agent/
-├── cmd/probe-agent/main.go    # 程序入口
+ProbeKit/
+├── cmd/ProbeKit/main.go    # 程序入口
 ├── config/                    # 示例 YAML 配置文件
 ├── internal/
 │   ├── collector/             # 采集器实现 (ICMP, DNS, SNMP)
@@ -66,11 +66,11 @@ make release
 make build VERSION=v1.0.0
 
 # 或手动指定
-go build -ldflags "-X probe-agent/internal/selfmetrics.BuildVersion=v1.0.0" \
-  -o probe-agent ./cmd/probe-agent/
+go build -ldflags "-X github.com/ZeroYe/probekit/internal/selfmetrics.BuildVersion=v1.0.0" \
+  -o ProbeKit ./cmd/ProbeKit/
 
 # 交叉编译单个目标
-GOOS=linux GOARCH=arm64 go build -o probe-agent-linux-arm64 ./cmd/probe-agent/
+GOOS=linux GOARCH=arm64 go build -o ProbeKit-linux-arm64 ./cmd/ProbeKit/
 ```
 
 ### 支持平台
@@ -102,10 +102,10 @@ go test -v -count=1 ./internal/metrics/
 
 ```bash
 # 源码运行
-go run ./cmd/probe-agent/ --config-dir ./config
+go run ./cmd/ProbeKit/ --config-dir ./config
 
 # 编译后运行
-./probe-agent --config-dir ./config
+./ProbeKit --config-dir ./config
 ```
 
 ## 架构
@@ -144,7 +144,7 @@ type Collector interface {
 
 2. 在 `internal/config/<name>.go` 中创建对应配置类型，实现 `Validate()`。
 3. 在 `internal/config/config.go` 中添加配置结构体字段。
-4. 在 `cmd/probe-agent/main.go` 中通过 `colMgr.Add(collector.NewXxxCollector(...))` 注册。
+4. 在 `cmd/ProbeKit/main.go` 中通过 `colMgr.Add(collector.NewXxxCollector(...))` 注册。
 5. 添加配置文件 `config/<name>.yaml`。
 6. 在 `restartCollectors()` 和 MCP 管理工具中添加对应逻辑。
 
@@ -182,7 +182,7 @@ func (s *Server) handleMyTool(ctx context.Context, req mcpcore.CallToolRequest) 
 ## 版本号注入
 
 ```bash
-go build -ldflags "-X probe-agent/internal/selfmetrics.BuildVersion=v1.2.3" -o probe-agent ./cmd/probe-agent/
+go build -ldflags "-X github.com/ZeroYe/probekit/internal/selfmetrics.BuildVersion=v1.2.3" -o ProbeKit ./cmd/ProbeKit/
 ```
 
 版本号会在 `/metrics` 端点的 `probe_agent_info{version="v1.2.3"}` 指标中体现。

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"probe-agent/internal/config"
+	"github.com/ZeroYe/probekit/internal/config"
 	mcpcore "github.com/mark3labs/mcp-go/mcp"
 	"gopkg.in/yaml.v3"
 )

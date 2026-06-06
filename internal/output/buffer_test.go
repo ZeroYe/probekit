@@ -3,7 +3,7 @@ package output
 import (
 	"testing"
 
-	"probe-agent/internal/metrics"
+	"github.com/ZeroYe/probekit/internal/metrics"
 )
 
 func TestRingBufferPushPop(t *testing.T) {

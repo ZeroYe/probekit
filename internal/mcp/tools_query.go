@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"probe-agent/internal/metrics"
+	"github.com/ZeroYe/probekit/internal/metrics"
 	mcpcore "github.com/mark3labs/mcp-go/mcp"
 )
 

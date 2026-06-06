@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"sync"
 
-	"probe-agent/internal/config"
-	"probe-agent/internal/metrics"
+	"github.com/ZeroYe/probekit/internal/config"
+	"github.com/ZeroYe/probekit/internal/metrics"
 	mcpcore "github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"go.uber.org/zap"
@@ -40,7 +40,7 @@ func New(deps Dependencies, cfg config.MCPConfig) (*Server, error) {
 	}
 
 	s.mcpServer = server.NewMCPServer(
-		"probe-agent",
+		"ProbeKit",
 		"1.0.0",
 		server.WithToolCapabilities(true),
 	)

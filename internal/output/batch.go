@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"probe-agent/internal/metrics"
+	"github.com/ZeroYe/probekit/internal/metrics"
 )
 
 type Batcher struct {

@@ -3,7 +3,7 @@ package output
 import (
 	"sync"
 
-	"probe-agent/internal/metrics"
+	"github.com/ZeroYe/probekit/internal/metrics"
 )
 
 type RingBuffer struct {

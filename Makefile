@@ -1,8 +1,8 @@
 VERSION ?= dev
 COMMIT  ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 DATE    ?= $(shell date -u +%Y-%m-%dT%H:%M:%SZ)
-LDFLAGS := -ldflags "-X probe-agent/internal/selfmetrics.BuildVersion=$(VERSION)"
-BIN     := probe-agent
+LDFLAGS := -ldflags "-X github.com/ZeroYe/probekit/internal/selfmetrics.BuildVersion=$(VERSION)"
+BIN     := ProbeKit
 
 .PHONY: all build clean test lint vet
 
@@ -11,16 +11,16 @@ all: clean test build
 # ── Build ──────────────────────────────────────────────────────────────────────
 
 build:
-	go build $(LDFLAGS) -o $(BIN)$(exe) ./cmd/probe-agent/
+	go build $(LDFLAGS) -o $(BIN)$(exe) ./cmd/ProbeKit/
 
 build-linux-amd64:
-	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN)-linux-amd64 ./cmd/probe-agent/
+	GOOS=linux GOARCH=amd64 go build $(LDFLAGS) -o $(BIN)-linux-amd64 ./cmd/ProbeKit/
 
 build-linux-arm64:
-	GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o $(BIN)-linux-arm64 ./cmd/probe-agent/
+	GOOS=linux GOARCH=arm64 go build $(LDFLAGS) -o $(BIN)-linux-arm64 ./cmd/ProbeKit/
 
 build-windows-amd64:
-	GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o $(BIN)-windows-amd64.exe ./cmd/probe-agent/
+	GOOS=windows GOARCH=amd64 go build $(LDFLAGS) -o $(BIN)-windows-amd64.exe ./cmd/ProbeKit/
 
 release: clean build-linux-amd64 build-linux-arm64 build-windows-amd64
 

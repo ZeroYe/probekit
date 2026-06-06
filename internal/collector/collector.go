@@ -3,7 +3,7 @@ package collector
 import (
 	"context"
 
-	"probe-agent/internal/output"
+	"github.com/ZeroYe/probekit/internal/output"
 )
 
 type Collector interface {

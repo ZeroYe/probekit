@@ -9,9 +9,9 @@ import (
 	"sync"
 	"time"
 
-	"probe-agent/internal/config"
-	"probe-agent/internal/metrics"
-	"probe-agent/internal/output"
+	"github.com/ZeroYe/probekit/internal/config"
+	"github.com/ZeroYe/probekit/internal/metrics"
+	"github.com/ZeroYe/probekit/internal/output"
 	"github.com/gosnmp/gosnmp"
 	"go.uber.org/zap"
 )

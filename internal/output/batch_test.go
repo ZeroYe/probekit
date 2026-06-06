@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"probe-agent/internal/metrics"
+	"github.com/ZeroYe/probekit/internal/metrics"
 )
 
 func TestBatcherAdd(t *testing.T) {

@@ -3,9 +3,9 @@ package output
 import (
 	"sync"
 
-	"probe-agent/internal/config"
-	"probe-agent/internal/metrics"
-	"probe-agent/internal/selfmetrics"
+	"github.com/ZeroYe/probekit/internal/config"
+	"github.com/ZeroYe/probekit/internal/metrics"
+	"github.com/ZeroYe/probekit/internal/selfmetrics"
 	"go.uber.org/zap"
 )
 

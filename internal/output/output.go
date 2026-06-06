@@ -1,6 +1,6 @@
 package output
 
-import "probe-agent/internal/metrics"
+import "github.com/ZeroYe/probekit/internal/metrics"
 
 type Output interface {
 	Name() string

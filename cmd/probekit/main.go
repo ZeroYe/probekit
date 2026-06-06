@@ -7,13 +7,13 @@ import (
 	"os/signal"
 	"syscall"
 
-	"probe-agent/internal/collector"
-	"probe-agent/internal/config"
-	"probe-agent/internal/logger"
-	probeMCP "probe-agent/internal/mcp"
-	"probe-agent/internal/metrics"
-	"probe-agent/internal/output"
-	"probe-agent/internal/selfmetrics"
+	"github.com/ZeroYe/probekit/internal/collector"
+	"github.com/ZeroYe/probekit/internal/config"
+	"github.com/ZeroYe/probekit/internal/logger"
+	probeMCP "github.com/ZeroYe/probekit/internal/mcp"
+	"github.com/ZeroYe/probekit/internal/metrics"
+	"github.com/ZeroYe/probekit/internal/output"
+	"github.com/ZeroYe/probekit/internal/selfmetrics"
 	"go.uber.org/zap"
 )
 

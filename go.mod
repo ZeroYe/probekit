@@ -1,4 +1,4 @@
-module probe-agent
+module github.com/ZeroYe/probekit
 
 go 1.26.4
 

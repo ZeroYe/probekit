@@ -1,4 +1,4 @@
-# probe-agent
+# ProbeKit
 
 一个轻量级网络监控代理，支持 ICMP Ping、DNS 查询和 SNMP 轮询，输出到 VictoriaMetrics，并提供 MCP (Model Context Protocol) 服务以支持 AI 辅助运维。
 
@@ -18,18 +18,18 @@
 ## 编译
 
 ```bash
-git clone <repo> && cd probe-agent
+git clone <repo> && cd ProbeKit
 
 # 构建当前平台
-go build -o probe-agent ./cmd/probe-agent/
+go build -o ProbeKit ./cmd/ProbeKit/
 
 # 注入版本号
-go build -ldflags "-X probe-agent/internal/selfmetrics.BuildVersion=v1.0.0" -o probe-agent ./cmd/probe-agent/
+go build -ldflags "-X github.com/ZeroYe/probekit/internal/selfmetrics.BuildVersion=v1.0.0" -o ProbeKit ./cmd/ProbeKit/
 
 # 交叉编译
-GOOS=linux GOARCH=amd64 go build -o probe-agent-linux-amd64 ./cmd/probe-agent/
-GOOS=linux GOARCH=arm64 go build -o probe-agent-linux-arm64 ./cmd/probe-agent/
-GOOS=windows GOARCH=amd64 go build -o probe-agent-windows-amd64.exe ./cmd/probe-agent/
+GOOS=linux GOARCH=amd64 go build -o ProbeKit-linux-amd64 ./cmd/ProbeKit/
+GOOS=linux GOARCH=arm64 go build -o ProbeKit-linux-arm64 ./cmd/ProbeKit/
+GOOS=windows GOARCH=amd64 go build -o ProbeKit-windows-amd64.exe ./cmd/ProbeKit/
 
 # 或使用 Makefile
 make build                        # 当前平台
@@ -222,23 +222,23 @@ targets:
 
 ```bash
 # Linux/macOS: ICMP 需要 root 或 CAP_NET_RAW
-sudo ./probe-agent --config-dir ./config
+sudo ./ProbeKit --config-dir ./config
 
 # 也可以赋予 CAP_NET_RAW 后以普通用户运行
-sudo setcap cap_net_raw+ep ./probe-agent
-./probe-agent --config-dir ./config
+sudo setcap cap_net_raw+ep ./ProbeKit
+./ProbeKit --config-dir ./config
 
 # Windows: 以管理员身份运行
-./probe-agent.exe --config-dir ./config
+./ProbeKit.exe --config-dir ./config
 
 # 指定不同的配置文件目录
-./probe-agent --config-dir /etc/probe-agent
+./ProbeKit --config-dir /etc/ProbeKit
 ```
 
 ### 启动日志示例
 
 ```
-2026-06-07T04:41:36.790+0800 INFO starting probe-agent config_dir=./config
+2026-06-07T04:41:36.790+0800 INFO starting ProbeKit config_dir=./config
 2026-06-07T04:41:36.797+0800 INFO vm pusher started push_url=http://victoria:8428/api/v1/import/prometheus  flush_interval=10s  batch_size=500
 2026-06-07T04:41:36.797+0800 INFO icmp started targets=2
 2026-06-07T04:41:36.797+0800 INFO dns started targets=3
@@ -246,7 +246,7 @@ sudo setcap cap_net_raw+ep ./probe-agent
 2026-06-07T04:41:36.797+0800 INFO mcp api key auth enabled
 2026-06-07T04:41:36.797+0800 INFO self metrics endpoint registered path=/metrics  collect_runtime=true
 2026-06-07T04:41:36.798+0800 INFO mcp server starting addr=:9801  endpoint=/mcp
-2026-06-07T04:41:36.798+0800 INFO probe-agent started
+2026-06-07T04:41:36.798+0800 INFO ProbeKit started
 ```
 
 ---
@@ -326,7 +326,7 @@ curl -s -X POST http://localhost:9801/mcp \
 ```
 
 **AI 助手用法示例：**
-> 用户："检查 probe-agent 所有目标的状态"
+> 用户："检查 ProbeKit 所有目标的状态"
 > AI 调用 `get_targets` → 返回 7 个目标，其中 snmp 10.0.0.1 DOWN → AI 报告异常
 
 ### 2. `get_metrics` — 查询目标的最新指标
@@ -551,7 +551,7 @@ curl -s -X POST http://localhost:9801/mcp \
 
 ```yaml
 scrape_configs:
-  - job_name: probe-agent
+  - job_name: ProbeKit
     scrape_interval: 15s
     static_configs:
       - targets: ["localhost:9801"]
@@ -613,7 +613,7 @@ probe_agent_gc_pauses_total 3
 
 ## Grafana 面板思路
 
-查询 probe-agent 自身指标的 PromQL 示例：
+查询 ProbeKit 自身指标的 PromQL 示例：
 
 | 需求 | PromQL |
 |------|--------|
@@ -686,7 +686,7 @@ curl -s -X POST http://localhost:9801/mcp \
 
 当前日志输出到 stderr，建议使用系统工具管理：
 - Linux: `systemd-journald` 或 `logrotate` 配合重定向
-- Windows: 重定向到文件 `.\probe-agent.exe --config-dir .\config > agent.log 2>&1`，配合第三方轮转工具
+- Windows: 重定向到文件 `.\ProbeKit.exe --config-dir .\config > agent.log 2>&1`，配合第三方轮转工具
 
 ---
 
@@ -703,11 +703,11 @@ ICMP 原始套接字需要 `CAP_NET_RAW` 权限。三种方式：
 
 ```bash
 # 方式 1: root 运行
-sudo ./probe-agent --config-dir ./config
+sudo ./ProbeKit --config-dir ./config
 
 # 方式 2: 赋予 capability（推荐）
-sudo setcap cap_net_raw+ep ./probe-agent
-./probe-agent --config-dir ./config
+sudo setcap cap_net_raw+ep ./ProbeKit
+./ProbeKit --config-dir ./config
 
 # 方式 3: 不加 ICMP 目标，只使用 DNS/SNMP
 # 在 icmp.yaml 中留空 targets: []
@@ -720,7 +720,7 @@ sudo setcap cap_net_raw+ep ./probe-agent
 在构建时通过 ldflags 注入版本号：
 
 ```bash
-go build -ldflags "-X probe-agent/internal/selfmetrics.BuildVersion=v1.2.3" -o probe-agent ./cmd/probe-agent/
+go build -ldflags "-X github.com/ZeroYe/probekit/internal/selfmetrics.BuildVersion=v1.2.3" -o ProbeKit ./cmd/ProbeKit/
 ```
 
 版本号会在 `/metrics` 端点的 `probe_agent_info{version="v1.2.3"}` 指标和 MCP 服务初始化日志中体现。
