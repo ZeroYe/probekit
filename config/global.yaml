@@ -1,0 +1,24 @@
+concurrency: 20
+log_level: info
+
+victoria_metrics:
+  push_url: "http://victoria:8428/api/v1/import/prometheus"
+  batch_size: 500
+  flush_interval: 10s
+  buffer_size: 10000
+  retry:
+    max_retries: 3
+    initial_backoff: 1s
+    max_backoff: 30s
+
+mcp_server:
+  enabled: true
+  listen: ":9801"
+  auth:
+    type: api_key
+    keys:
+      - "sk-probe-change-me"
+self_metrics:
+  enabled: true
+  path: /metrics
+  collect_runtime: true

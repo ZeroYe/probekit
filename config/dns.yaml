@@ -1,0 +1,13 @@
+targets:
+  - domain: "example.com"
+    server: "8.8.8.8"
+    record_type: "A"
+    interval: 60s
+
+  - domain: "example.com"
+    server: "114.114.114.114"
+    record_type: "A"
+
+  - domain: "mail.example.com"
+    server: "8.8.8.8"
+    record_type: "MX"

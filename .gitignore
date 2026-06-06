@@ -1,0 +1,20 @@
+# Binaries
+probe-agent
+probe-agent.exe
+probe-agent-*
+*.exe
+
+# Test output
+stdout.txt
+stderr.txt
+
+# IDE
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
