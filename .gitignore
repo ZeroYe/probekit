@@ -1,7 +1,7 @@
 # Binaries
-probe-agent
-probe-agent.exe
-probe-agent-*
+/probe-agent
+/probe-agent.exe
+/probe-agent-*
 *.exe
 
 # Test output
