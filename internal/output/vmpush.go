@@ -78,6 +78,13 @@ func (v *VMPusher) Write(ms []metrics.Metric) error {
 }
 
 func (v *VMPusher) flushLoop() {
+	if v.cfg.PushURL == "" {
+		v.logger.Warn("push_url is empty, vm pusher disabled")
+		<-v.ctx.Done()
+		close(v.done)
+		return
+	}
+
 	ticker := time.NewTicker(v.cfg.FlushInterval)
 	defer ticker.Stop()
 	defer close(v.done)
@@ -110,25 +117,27 @@ func (v *VMPusher) flush() {
 
 func (v *VMPusher) push(data string) {
 	for attempt := 0; attempt <= v.cfg.Retry.MaxRetries; attempt++ {
-		if err := v.pushOnce(data); err != nil {
-			v.logger.Error("push failed",
-				zap.Int("attempt", attempt+1),
-				zap.Error(err),
-			)
-			if attempt < v.cfg.Retry.MaxRetries {
-				backoff := v.cfg.Retry.InitialBackoff * time.Duration(1<<uint(attempt))
-				if backoff > v.cfg.Retry.MaxBackoff {
-					backoff = v.cfg.Retry.MaxBackoff
-				}
-				select {
-				case <-v.ctx.Done():
-					return
-				case <-time.After(backoff):
-				}
-			}
+		err := v.pushOnce(data)
+		if err == nil {
 			return
 		}
-		return
+
+		v.logger.Error("push failed",
+			zap.Int("attempt", attempt+1),
+			zap.Error(err),
+		)
+
+		if attempt < v.cfg.Retry.MaxRetries {
+			backoff := v.cfg.Retry.InitialBackoff * time.Duration(1<<uint(attempt))
+			if backoff > v.cfg.Retry.MaxBackoff {
+				backoff = v.cfg.Retry.MaxBackoff
+			}
+			select {
+			case <-v.ctx.Done():
+				return
+			case <-time.After(backoff):
+			}
+		}
 	}
 }
 

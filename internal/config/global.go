@@ -42,9 +42,6 @@ type VMConfig struct {
 }
 
 func (v VMConfig) Validate() error {
-	if v.PushURL == "" {
-		return nil
-	}
 	if v.BatchSize <= 0 {
 		v.BatchSize = 500
 	}
