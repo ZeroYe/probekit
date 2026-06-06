@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "版本号 (如 v1.0.0)"
+        required: false
+        default: "dev-build"
 
 permissions:
   contents: write
@@ -24,7 +30,8 @@ jobs:
       - name: Build all platforms
         working-directory: ${{ github.workspace }}
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${VERSION#v}"
           LDFLAGS="-X github.com/ZeroYe/probekit/internal/selfmetrics.BuildVersion=${VERSION}"
 
           mkdir -p dist
@@ -53,17 +60,18 @@ jobs:
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          name: "probekit ${{ github.ref_name }}"
+          name: "probekit ${{ github.event.inputs.version || github.ref_name }}"
+          tag_name: ${{ github.event.inputs.version || github.ref_name }}
           body: |
-            ## probekit ${{ github.ref_name }}
+            ## probekit ${{ github.event.inputs.version || github.ref_name }}
 
             ### Downloads
 
             | File | Platform |
             |------|----------|
-            | `probekit-linux-amd64-${{ github.ref_name }}` | Linux x86_64 |
-            | `probekit-linux-arm64-${{ github.ref_name }}` | Linux ARM64 |
-            | `probekit-windows-amd64-${{ github.ref_name }}.exe` | Windows x86_64 |
+            | `probekit-linux-amd64-${{ github.event.inputs.version || github.ref_name }}` | Linux x86_64 |
+            | `probekit-linux-arm64-${{ github.event.inputs.version || github.ref_name }}` | Linux ARM64 |
+            | `probekit-windows-amd64-${{ github.event.inputs.version || github.ref_name }}.exe` | Windows x86_64 |
 
             `checksums.txt` — SHA256 of all files above.
           files: dist/*
