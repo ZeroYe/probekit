@@ -24,8 +24,6 @@ jobs:
       - name: Build all platforms
         working-directory: ${{ github.workspace }}
         run: |
-          ls -la
-          ls -la cmd/probe-agent/ || true
           VERSION="${GITHUB_REF_NAME#v}"
           LDFLAGS="-X probe-agent/internal/selfmetrics.BuildVersion=${VERSION}"
 
